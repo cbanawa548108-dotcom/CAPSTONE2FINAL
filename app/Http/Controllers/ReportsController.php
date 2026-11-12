@@ -218,35 +218,10 @@ class ReportsController extends Controller
             }
         }
 
-        // Daily accuracy keeps multiple scored days visible instead of combining
-        // them into a single weekly point.
-        $dates = [];
-        $labels = [];
-        if ($lastDay >= $firstDay) {
-            for ($date = $c['from']->copy(); $date->toDateString() <= $lastDay; $date->addDay()) {
-                $dates[] = $date->toDateString();
-                $labels[] = $date->format('M j');
-            }
-        }
-        $topIds = $fruits->take(3)->map(fn ($f) => $forecasts->firstWhere('fruit_name', $f['fruit'])->item_id);
-        $series = [];
-        foreach ($topIds as $itemId) {
-            $rows = $forecasts->where('item_id', $itemId)->keyBy('d');
-            $itemActuals = $actuals[$itemId] ?? collect();
-            $data = array_map(function ($date) use ($rows, $itemActuals, $accuracy) {
-                $forecast = $rows->get($date);
-                if (!$forecast || (float) ($itemActuals[$date] ?? 0) <= 0) {
-                    return null;
-                }
-
-                return $accuracy((float) $forecast->predicted, (float) $itemActuals[$date]);
-            }, $dates);
-            $series[] = ['fruit' => $rows->first()->fruit_name, 'data' => $data];
-        }
-
         $scored = $fruits->filter(fn ($f) => $f['accuracy'] !== null);
         $totalActual = (float) $scored->sum('actual');
         $overall = $totalActual > 0 ? $accuracy((float) $scored->sum('forecast'), $totalActual) : null;
+        $comparison = $fruits->filter(fn ($fruit) => $fruit['actual'] > 0)->values();
 
         // Model health comes from the latest SARIMAX training run
         $run = DB::table('ml_model_runs')->where('model', 'SARIMAX')->orderByDesc('id')->first();
@@ -267,7 +242,11 @@ class ReportsController extends Controller
                 'scored_days' => count($scoredErrors),
             ],
             'fruits' => $fruits,
-            'accuracy_trend' => ['labels' => $labels, 'series' => $series],
+            'forecast_comparison' => [
+                'labels' => $comparison->pluck('fruit')->all(),
+                'forecast' => $comparison->pluck('forecast')->all(),
+                'actual' => $comparison->pluck('actual')->all(),
+            ],
         ]);
     }
 

@@ -98,9 +98,7 @@
             <div class="bg-[#F5F3FF] rounded-2xl p-4 border border-violet-100 text-center"><p class="text-[22px] font-black text-gray-900" x-text="card.value"></p><p class="text-[12px] text-gray-500 mt-0.5" x-text="card.label"></p><span class="badge badge-violet text-[10px] mt-2" x-text="card.badge"></span></div>
             </template>
         </div>
-        <p x-show="forecast?.summary?.scored_days < 2" class="text-[12px] text-gray-500 mb-4">
-            The line needs at least two days with both a saved forecast and recorded sales. Unscored days are left blank.
-        </p>
+        <p class="text-[12px] text-gray-500 mb-2">Forecast vs. actual revenue by fruit</p>
         <p x-show="forecast?.summary?.demo_training_rows > 0" class="text-[12px] text-gray-500 mb-4">
             Demo samples are used for model training only. Sales totals and forecast-vs-actual scores use recorded transactions.
         </p>
@@ -291,7 +289,7 @@ function reportsDataController() {
             const verified = sm && sm.model_status === 'success';
             return [
                 { label: 'Overall Accuracy', value: sm ? pct(sm.overall_accuracy ?? sm.model_accuracy) : '—', badge: sm && sm.overall_accuracy !== null ? 'vs actual sales' : (sm && sm.model_accuracy !== null ? 'Model validation' : 'No data yet') },
-                { label: 'MAPE Score', value: sm && sm.mape !== null ? pct(sm.mape) : '—', badge: sm && sm.mape !== null ? 'Real forecast vs sales' : 'No scored days yet' },
+                { label: 'MAPE Score', value: sm && sm.mape !== null ? pct(sm.mape) : '—', badge: sm && sm.mape !== null ? 'Real-sales error · lower is better' : 'No scored days yet' },
                 { label: 'Model Version', value: sm && sm.model ? sm.model : '—', badge: sm && sm.trained_at ? 'Trained ' + sm.trained_at : 'Not trained yet' },
                 { label: 'Training Data', value: sm && sm.training_rows ? num(sm.training_rows, 0) + ' records' : '—', badge: sm && sm.demo_training_rows > 0 ? num(sm.real_training_rows || 0, 0) + ' real + ' + num(sm.demo_training_rows, 0) + ' demo' : (verified ? 'Verified' : 'Unverified') },
             ];
@@ -327,9 +325,12 @@ function reportsDataController() {
                 draw('salesReportChart', { type: 'line', data: { labels: rows.map((r) => r.label), datasets: [{ label: 'Daily Revenue', data: rows.map((r) => r.total_sales), borderColor: '#7C3AED', backgroundColor: 'rgba(124,58,237,.07)', borderWidth: 2.5, fill: true, tension: .4, pointRadius: 0 }] },
                     options: { responsive: true, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false }, ticks: { font: { size: 9 }, color: '#9CA3AF', maxTicksLimit: 15 } }, y: { beginAtZero: true, grid: { color: gc }, border: { display: false }, ticks: { font: { size: 10 }, color: '#9CA3AF', callback: kilo } } } } });
             } else if (tab === 'forecast') {
-                const trend = d.accuracy_trend;
-                draw('forecastAccReport', { type: 'line', data: { labels: trend.labels, datasets: trend.series.map((s, i) => ({ label: s.fruit, data: s.data, borderColor: palette[i % palette.length], tension: .4, fill: false, borderWidth: 2, pointRadius: 3, pointHoverRadius: 5, showLine: true, spanGaps: true })) },
-                    options: { responsive: true, plugins: { legend: { position: 'top', labels: { font: { size: 11 } } } }, scales: { x: { grid: { display: false }, ticks: { maxTicksLimit: 14 } }, y: { min: 0, max: 100, grid: { color: gc }, border: { display: false }, ticks: { callback: (v) => v + '%', font: { size: 10 }, color: '#9CA3AF' } } } } });
+                const comparison = d.forecast_comparison;
+                draw('forecastAccReport', { type: 'line', data: { labels: comparison.labels, datasets: [
+                    { label: 'Forecast Revenue', data: comparison.forecast, borderColor: '#7C3AED', backgroundColor: '#7C3AED', tension: .3, fill: false, borderWidth: 2.5, pointRadius: 4, pointHoverRadius: 6 },
+                    { label: 'Actual Revenue', data: comparison.actual, borderColor: '#10B981', backgroundColor: '#10B981', tension: .3, fill: false, borderWidth: 2.5, pointRadius: 4, pointHoverRadius: 6 },
+                ] },
+                    options: { responsive: true, plugins: { legend: { position: 'top', labels: { font: { size: 11 } } } }, scales: { x: { grid: { display: false } }, y: { beginAtZero: true, grid: { color: gc }, border: { display: false }, ticks: { callback: kilo, font: { size: 10 }, color: '#9CA3AF' } } } } });
             } else if (tab === 'inventory') {
                 const rows = d.items.filter((r) => r.turnover !== null);
                 draw('invTurnChart', { type: 'bar', data: { labels: rows.map((r) => r.product_name), datasets: [{ label: 'Turnover Rate', data: rows.map((r) => r.turnover), backgroundColor: rows.map((_, i) => palette[i % palette.length]), borderRadius: 10 }] },
