@@ -210,26 +210,29 @@ class ReportsController extends Controller
             ];
         })->sortByDesc('actual')->values();
 
-        // Weekly accuracy for the three best-selling fruits
-        $weeks = max(1, (int) ceil($c['days'] / 7));
+        // Daily accuracy keeps multiple scored days visible instead of combining
+        // them into a single weekly point.
+        $dates = [];
         $labels = [];
-        for ($w = 0; $w < $weeks; $w++) {
-            $labels[] = 'Week ' . ($w + 1);
+        if ($lastDay >= $firstDay) {
+            for ($date = $c['from']->copy(); $date->toDateString() <= $lastDay; $date->addDay()) {
+                $dates[] = $date->toDateString();
+                $labels[] = $date->format('M j');
+            }
         }
         $topIds = $fruits->take(3)->map(fn ($f) => $forecasts->firstWhere('fruit_name', $f['fruit'])->item_id);
         $series = [];
         foreach ($topIds as $itemId) {
-            $rows = $forecasts->where('item_id', $itemId);
+            $rows = $forecasts->where('item_id', $itemId)->keyBy('d');
             $itemActuals = $actuals[$itemId] ?? collect();
-            $data = [];
-            for ($w = 0; $w < $weeks; $w++) {
-                $wFrom = $c['from']->copy()->addDays($w * 7)->toDateString();
-                $wTo = $c['from']->copy()->addDays($w * 7 + 6)->toDateString();
-                $bucket = $rows->filter(fn ($r) => $r->d >= $wFrom && $r->d <= $wTo);
-                $f = (float) $bucket->sum('predicted');
-                $a = (float) $bucket->sum(fn ($r) => (float) ($itemActuals[$r->d] ?? 0));
-                $data[] = $accuracy($f, $a);
-            }
+            $data = array_map(function ($date) use ($rows, $itemActuals, $accuracy) {
+                $forecast = $rows->get($date);
+                if (!$forecast || (float) ($itemActuals[$date] ?? 0) <= 0) {
+                    return null;
+                }
+
+                return $accuracy((float) $forecast->predicted, (float) $itemActuals[$date]);
+            }, $dates);
             $series[] = ['fruit' => $rows->first()->fruit_name, 'data' => $data];
         }
 
@@ -258,7 +261,7 @@ class ReportsController extends Controller
                 'scored_days' => $forecasts->pluck('d')->unique()->count(),
             ],
             'fruits' => $fruits,
-            'weekly' => ['labels' => $labels, 'series' => $series],
+            'accuracy_trend' => ['labels' => $labels, 'series' => $series],
         ]);
     }
 

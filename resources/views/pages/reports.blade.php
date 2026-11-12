@@ -324,9 +324,9 @@ function reportsDataController() {
                 draw('salesReportChart', { type: 'line', data: { labels: rows.map((r) => r.label), datasets: [{ label: 'Daily Revenue', data: rows.map((r) => r.total_sales), borderColor: '#7C3AED', backgroundColor: 'rgba(124,58,237,.07)', borderWidth: 2.5, fill: true, tension: .4, pointRadius: 0 }] },
                     options: { responsive: true, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false }, ticks: { font: { size: 9 }, color: '#9CA3AF', maxTicksLimit: 15 } }, y: { beginAtZero: true, grid: { color: gc }, border: { display: false }, ticks: { font: { size: 10 }, color: '#9CA3AF', callback: kilo } } } } });
             } else if (tab === 'forecast') {
-                const w = d.weekly;
-                draw('forecastAccReport', { type: 'line', data: { labels: w.labels, datasets: w.series.map((s, i) => ({ label: s.fruit, data: s.data, borderColor: palette[i % palette.length], tension: .4, fill: false, borderWidth: 2, pointRadius: 4, spanGaps: true })) },
-                    options: { responsive: true, plugins: { legend: { position: 'top', labels: { font: { size: 11 } } } }, scales: { x: { grid: { display: false } }, y: { min: 0, max: 100, grid: { color: gc }, border: { display: false }, ticks: { callback: (v) => v + '%', font: { size: 10 }, color: '#9CA3AF' } } } } });
+                const trend = d.accuracy_trend;
+                draw('forecastAccReport', { type: 'line', data: { labels: trend.labels, datasets: trend.series.map((s, i) => ({ label: s.fruit, data: s.data, borderColor: palette[i % palette.length], tension: .4, fill: false, borderWidth: 2, pointRadius: 3, pointHoverRadius: 5, showLine: true, spanGaps: false })) },
+                    options: { responsive: true, plugins: { legend: { position: 'top', labels: { font: { size: 11 } } } }, scales: { x: { grid: { display: false }, ticks: { maxTicksLimit: 14 } }, y: { min: 0, max: 100, grid: { color: gc }, border: { display: false }, ticks: { callback: (v) => v + '%', font: { size: 10 }, color: '#9CA3AF' } } } } });
             } else if (tab === 'inventory') {
                 const rows = d.items.filter((r) => r.turnover !== null);
                 draw('invTurnChart', { type: 'bar', data: { labels: rows.map((r) => r.product_name), datasets: [{ label: 'Turnover Rate', data: rows.map((r) => r.turnover), backgroundColor: rows.map((_, i) => palette[i % palette.length]), borderRadius: 10 }] },
