@@ -87,7 +87,11 @@ def has_enough_history(series):
 
 
 def scaler(exog):
-    return exog.mean(), exog.std().replace(0, 1).fillna(1)
+    mean = exog.mean()
+    std = exog.std()
+    minimum_std = np.maximum(mean.abs() * 1e-6, 1e-8)
+    std = std.where(np.isfinite(std) & (std > minimum_std), 1.0).fillna(1.0)
+    return mean, std
 
 
 def build_model(y, exog, order, seasonal_order):
@@ -111,6 +115,10 @@ def select_order(y, exog):
                 res = fit(y, exog, order, seasonal)
             except Exception:
                 continue
+            if not np.isfinite(res.params).all():
+                continue
+            if not res.mle_retvals.get("converged", True):
+                continue
             if np.isfinite(res.aic) and (best is None or res.aic < best[2].aic):
                 best = (order, seasonal, res)
     if best is None:
@@ -122,7 +130,10 @@ def evaluate(res, y, x, test_days):
     """Score a fit (trained before test_days) on the holdout days; gap days in between are skipped."""
     horizon = y.index[(y.index >= test_days[0]) & (y.index <= test_days[-1])]
     fc = res.get_forecast(len(horizon), exog=x.loc[horizon])
-    pred = np.clip(pd.Series(fc.predicted_mean.to_numpy(), index=horizon).loc[test_days].to_numpy(), 0, None)
+    raw_pred = pd.Series(fc.predicted_mean.to_numpy(), index=horizon).loc[test_days].to_numpy()
+    if not np.isfinite(raw_pred).all():
+        raise ValueError("SARIMAX produced non-finite holdout predictions")
+    pred = np.clip(raw_pred, 0, None)
     actual = y.loc[test_days].to_numpy()
 
     err = actual - pred
@@ -133,12 +144,45 @@ def evaluate(res, y, x, test_days):
     nonzero = actual > 0
     mape = float(np.mean(np.abs(err[nonzero] / actual[nonzero])) * 100) if nonzero.any() else None
     accuracy = max(0.0, min(100.0, (1 - wape) * 100))
+    metrics = {"mae": mae, "rmse": rmse, "mape": mape, "wape": wape * 100, "accuracy": accuracy}
+    if not np.isfinite([value for value in metrics.values() if value is not None]).all():
+        raise ValueError("SARIMAX produced non-finite holdout metrics")
+
+    scale = max(float(np.nanquantile(actual, 0.99)), 1.0)
+    if mae > scale * 5 or rmse > scale * 10:
+        raise ValueError("SARIMAX holdout errors are unstable relative to daily demand")
+
     return {"mae": round(mae, 3), "rmse": round(rmse, 3), "mape": None if mape is None else round(mape, 2),
             "wape": round(wape * 100, 2), "accuracy": round(accuracy, 2)}
 
 
 def model_path(item_id):
     return SARIMAX_DIR / f"item_{item_id}.json"
+
+
+def valid_model(meta, series):
+    """Reject stale or numerically unstable saved fits so they are retrained."""
+    try:
+        metrics = meta["metrics"]
+        scale = max(float(series.quantile(0.99)), 1.0)
+        metric_values = [float(metrics["mae"]), float(metrics["rmse"]), float(metrics["accuracy"])]
+        if not np.isfinite(metric_values).all() or not 0 <= metric_values[2] <= 100:
+            return False
+        if float(metrics["mae"]) > scale * 5 or float(metrics["rmse"]) > scale * 10:
+            return False
+
+        coefficients = meta["weather_coefficients"]
+        values = [float(coefficients[column]) for column in WEATHER_COLS]
+        if not np.isfinite(values).all() or any(abs(value) > scale * 10 for value in values):
+            return False
+        pvalues = [float(meta["weather_pvalues"][column]) for column in WEATHER_COLS]
+        if not np.isfinite(pvalues).all() or any(value < 0 or value > 1 for value in pvalues):
+            return False
+
+        params = np.asarray(list(meta["params"].values()), dtype=float)
+        return bool(np.isfinite(params).all())
+    except (KeyError, TypeError, ValueError):
+        return False
 
 
 def refit_item(item_id, y, exog):
@@ -152,13 +196,24 @@ def refit_item(item_id, y, exog):
 
     mean, std = scaler(exog)
     res = fit(y, (exog - mean) / std, order, seasonal)
+    if not np.isfinite(res.params).all() or not res.mle_retvals.get("converged", True):
+        raise ValueError("SARIMAX full-history fit did not converge to finite parameters")
+    scale = max(float(y.quantile(0.99)), 1.0)
+    coefficients = {c: float(res.params.get(c, 0.0)) for c in WEATHER_COLS}
+    if any(not np.isfinite(value) or abs(value) > scale * 10 for value in coefficients.values()):
+        raise ValueError("SARIMAX weather effects are unstable relative to daily demand")
+    pvalues = {
+        c: float(res.pvalues.get(c, 1.0))
+        for c in WEATHER_COLS
+    }
+    pvalues = {c: value if np.isfinite(value) and 0 <= value <= 1 else 1.0 for c, value in pvalues.items()}
 
     meta = {
         "order": list(order), "seasonal_order": list(seasonal), "aic": round(float(res.aic), 2),
         "params": {name: float(v) for name, v in res.params.items()},
         "exog_mean": mean.to_dict(), "exog_std": std.to_dict(), "metrics": metrics,
-        "weather_coefficients": {c: round(float(res.params.get(c, 0.0)), 4) for c in WEATHER_COLS},
-        "weather_pvalues": {c: round(float(res.pvalues.get(c, 1.0)), 4) for c in WEATHER_COLS},
+        "weather_coefficients": {c: round(value, 4) for c, value in coefficients.items()},
+        "weather_pvalues": {c: round(value, 4) for c, value in pvalues.items()},
         "trained_through": str(y.dropna().index[-1].date()),
         "fitted_at": datetime.now().isoformat(timespec="seconds"),
     }
@@ -197,7 +252,11 @@ def baseline_item(series, weather, future_dates):
 
 def refit_all(fruits, weather, force):
     """Re-estimate models in parallel for fruits that need it. Returns ({item_id: meta}, {item_id: error})."""
-    todo = [f for f in fruits if has_enough_history(f["series"]) and (force or load_model(f["item_id"]) is None)]
+    todo = [
+        f for f in fruits
+        if has_enough_history(f["series"])
+        and (force or not valid_model(load_model(f["item_id"]) or {}, f["series"]))
+    ]
     refitted, errors = {}, {}
     if not todo:
         return refitted, errors

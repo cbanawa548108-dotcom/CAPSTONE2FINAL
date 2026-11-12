@@ -180,6 +180,7 @@
     <div class="px-6 py-4 border-b border-gray-100">
         <h3 class="font-bold text-gray-900 text-[15px]">SARIMAX Model Details</h3>
         <p class="text-[12px] text-gray-400 mt-0.5">Order chosen by AIC per fruit. Weather coefficients are per 1 standard deviation; p &lt; 0.05 means the effect is statistically significant.</p>
+        <p x-show="modelDetailsWarning" class="mt-2 text-[12px] font-semibold text-amber-700">Some saved model diagnostics are unstable and hidden. Click “Refresh Forecast” to retrain those models before interpreting their metrics.</p>
     </div>
     <div class="overflow-x-auto">
         <table class="tbl w-full">
@@ -191,12 +192,11 @@
                 <tr>
                     <td class="font-semibold text-gray-800 text-[13px]" x-text="m.fruit"></td>
                     <td class="text-[12.5px] text-gray-600 font-mono" x-text="'(' + m.order.join(',') + ')(' + m.seasonal_order.join(',') + ')'"></td>
-                    <td class="text-[12.5px] text-gray-600" x-text="m.mae + ' kg'"></td>
-                    <td class="text-[12.5px] text-gray-600" x-text="m.rmse + ' kg'"></td>
+                    <td class="text-[12.5px] text-gray-600" x-text="m.diagnostics_valid ? Number(m.mae).toLocaleString('en-PH', {maximumFractionDigits: 2}) + ' kg' : 'Unreliable — retrain'"></td>
+                    <td class="text-[12.5px] text-gray-600" x-text="m.diagnostics_valid ? Number(m.rmse).toLocaleString('en-PH', {maximumFractionDigits: 2}) + ' kg' : 'Unreliable — retrain'"></td>
                     <template x-for="w in ['temperature','humidity','rainfall']" :key="w">
-                        <td class="text-[12.5px]" :class="m.weather_pvalues[w] < 0.05 ? 'font-bold text-gray-900' : 'text-gray-400'">
-                            <span x-text="(m.weather_coefficients[w] >= 0 ? '+' : '') + m.weather_coefficients[w]"></span>
-                            <span class="text-[10.5px]" x-text="'p=' + m.weather_pvalues[w]"></span>
+                        <td class="text-[12.5px]" :class="m.diagnostics_valid && m.weather_pvalues[w] < 0.05 ? 'font-bold text-gray-900' : 'text-gray-400'">
+                            <span x-text="m.diagnostics_valid ? (m.weather_coefficients[w] >= 0 ? '+' : '') + Number(m.weather_coefficients[w]).toLocaleString('en-PH', {maximumFractionDigits: 4}) + ' · p=' + Number(m.weather_pvalues[w]).toLocaleString('en-PH', {maximumFractionDigits: 4}) : 'Unreliable — retrain'"></span>
                         </td>
                     </template>
                 </tr>
@@ -214,7 +214,7 @@
 function forecastPage() {
     return {
         loading: true, running: false, hasForecast: false, message: '', messageOk: true,
-        run: null, summary: {}, daily: [], lastPeriod: [], fruits: [], weather: {}, modelRows: [],
+        run: null, summary: {}, daily: [], lastPeriod: [], fruits: [], weather: {}, modelRows: [], modelDetailsWarning: false,
         charts: {},
 
         async load() {
@@ -230,7 +230,24 @@ function forecastPage() {
                     this.lastPeriod = res.last_period;
                     this.fruits = res.fruits;
                     const perFruit = res.run?.metrics?.per_fruit || {};
-                    this.modelRows = Object.entries(perFruit).map(([fruit, m]) => ({ fruit, ...m }));
+                    this.modelRows = Object.entries(perFruit).map(([fruit, m]) => {
+                        const forecast = this.fruits.find(item => item.fruit === fruit);
+                        const demandScale = Math.max(Number(forecast?.current_per_day) || 0, Number(forecast?.predicted_per_day) || 0, 1);
+                        const coefficients = m.weather_coefficients || {};
+                        const pvalues = m.weather_pvalues || {};
+                        const validMetrics = [m.mae, m.rmse, m.accuracy].every(value => Number.isFinite(Number(value)));
+                        const validWeather = ['temperature', 'humidity', 'rainfall'].every(key =>
+                            Number.isFinite(Number(coefficients[key]))
+                            && Math.abs(Number(coefficients[key])) <= demandScale * 100
+                            && Number.isFinite(Number(pvalues[key]))
+                            && Number(pvalues[key]) >= 0
+                            && Number(pvalues[key]) <= 1
+                        );
+
+                        return { fruit, ...m, diagnostics_valid: validMetrics && validWeather
+                            && Number(m.mae) <= demandScale * 100 && Number(m.rmse) <= demandScale * 100 };
+                    });
+                    this.modelDetailsWarning = this.modelRows.some(model => !model.diagnostics_valid);
                 }
             } catch (e) {
                 this.message = 'Failed to load forecast: ' + e.message; this.messageOk = false;
