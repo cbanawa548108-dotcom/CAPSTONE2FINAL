@@ -252,6 +252,8 @@ class ReportsController extends Controller
                 'model_status' => $run->status ?? null,
                 'trained_at' => $run ? Carbon::parse($run->created_at)->setTimezone($c['tz'])->format('M j, Y') : null,
                 'training_rows' => $run->training_rows ?? null,
+                'real_training_rows' => $metrics['real_training_rows'] ?? null,
+                'demo_training_rows' => $metrics['demo_training_rows'] ?? null,
                 'fruits_modeled' => $metrics['fruits_modeled'] ?? null,
                 'scored_days' => $forecasts->pluck('d')->unique()->count(),
             ],

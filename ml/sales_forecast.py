@@ -56,11 +56,17 @@ SARIMAX_DIR = MODEL_DIR / "sarimax"
 
 def load_sales(conn):
     df = query_df(conn, """
-        SELECT si.inventory_item_id, ii.name, ii.price_per_unit, st.created_at, si.quantity
+        SELECT si.inventory_item_id, ii.name, ii.price_per_unit, st.created_at, si.quantity,
+               'real' AS data_source
         FROM sales_items si
         JOIN sales_transactions st ON st.id = si.sale_transaction_id
         JOIN inventory_items ii ON ii.id = si.inventory_item_id
         WHERE st.type = 'sale' AND st.status = 'completed' AND si.quantity > 0
+        UNION ALL
+        SELECT ds.inventory_item_id, ii.name, ii.price_per_unit, ds.sale_date AS created_at,
+               ds.quantity, 'demo' AS data_source
+        FROM forecast_training_samples ds
+        JOIN inventory_items ii ON ii.id = ds.inventory_item_id
     """)
     if df.empty:
         return df
@@ -291,6 +297,7 @@ def main():
     cur.close()
 
     accuracies = [m["accuracy"] for m in per_fruit.values()]
+    source_counts = sales["data_source"].value_counts()
     summary = {
         "horizon_days": args.horizon,
         "fruits_modeled": len(per_fruit),
@@ -299,6 +306,8 @@ def main():
         "overall_accuracy": round(float(np.mean(accuracies)), 2) if accuracies else None,
         "mean_mae": round(float(np.mean([m["mae"] for m in per_fruit.values()])), 3) if per_fruit else None,
         "mean_rmse": round(float(np.mean([m["rmse"] for m in per_fruit.values()])), 3) if per_fruit else None,
+        "real_training_rows": int(source_counts.get("real", 0)),
+        "demo_training_rows": int(source_counts.get("demo", 0)),
         "per_fruit": per_fruit,
         "baseline": skipped,
     }

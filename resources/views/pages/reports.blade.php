@@ -98,6 +98,9 @@
             <div class="bg-[#F5F3FF] rounded-2xl p-4 border border-violet-100 text-center"><p class="text-[22px] font-black text-gray-900" x-text="card.value"></p><p class="text-[12px] text-gray-500 mt-0.5" x-text="card.label"></p><span class="badge badge-violet text-[10px] mt-2" x-text="card.badge"></span></div>
             </template>
         </div>
+        <p x-show="forecast?.summary?.demo_training_rows > 0" class="text-[12px] text-gray-500 mb-4">
+            Demo samples are used for model training only. Sales totals and forecast-vs-actual scores use recorded transactions.
+        </p>
         <canvas id="forecastAccReport" height="100" class="mb-6"></canvas>
         <table class="tbl w-full">
             <thead><tr><th class="text-left">Fruit</th><th class="text-left">Forecast</th><th class="text-left">Actual</th><th class="text-left">Error</th><th class="text-left">Accuracy</th></tr></thead>
@@ -285,9 +288,9 @@ function reportsDataController() {
             const verified = sm && sm.model_status === 'success';
             return [
                 { label: 'Overall Accuracy', value: sm ? pct(sm.overall_accuracy ?? sm.model_accuracy) : '—', badge: sm && sm.overall_accuracy !== null ? 'vs actual sales' : (sm && sm.model_accuracy !== null ? 'Model validation' : 'No data yet') },
-                { label: 'MAPE Score', value: sm ? pct(sm.mape) : '—', badge: sm && sm.mape !== null ? 'Model validation' : 'No data yet' },
+                { label: 'MAPE Score', value: sm ? pct(sm.mape) : '—', badge: sm && sm.mape !== null ? (sm.demo_training_rows > 0 ? 'Demo-influenced' : 'Model validation') : 'No data yet' },
                 { label: 'Model Version', value: sm && sm.model ? sm.model : '—', badge: sm && sm.trained_at ? 'Trained ' + sm.trained_at : 'Not trained yet' },
-                { label: 'Training Data', value: sm && sm.training_rows ? num(sm.training_rows, 0) + ' records' : '—', badge: verified ? 'Verified' : 'Unverified' },
+                { label: 'Training Data', value: sm && sm.training_rows ? num(sm.training_rows, 0) + ' records' : '—', badge: sm && sm.demo_training_rows > 0 ? num(sm.real_training_rows || 0, 0) + ' real + ' + num(sm.demo_training_rows, 0) + ' demo' : (verified ? 'Verified' : 'Unverified') },
             ];
         },
         get spoilageCards() {
