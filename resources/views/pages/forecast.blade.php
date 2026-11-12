@@ -104,6 +104,7 @@
             <div class="bg-gray-50 border border-gray-100 rounded-xl p-3 text-center">
                 <p class="text-[11px] font-bold text-gray-500" x-text="d.label.split(' ')[0]"></p>
                 <p class="text-[16px] font-black text-gray-900 mt-1"><span x-text="d.temperature != null ? Math.round(d.temperature) : '—'"></span>°</p>
+                <p class="text-[11px] font-bold" :class="weatherTone(d)" x-text="weatherLabel(d)"></p>
                 <p class="text-[10.5px] text-gray-500" x-text="(d.humidity != null ? Math.round(d.humidity) : '—') + '% RH'"></p>
                 <p class="text-[10.5px] text-blue-600 font-semibold" x-text="(d.rainfall != null ? d.rainfall.toFixed(1) : '—') + ' mm'"></p>
             </div>
@@ -217,6 +218,23 @@ function forecastPage() {
         run: null, summary: {}, daily: [], lastPeriod: [], fruits: [], weather: {}, modelRows: [], modelDetailsWarning: false,
         charts: {},
 
+        weatherLabel(day) {
+            const condition = String(day.condition || '').toLowerCase();
+            if (['rain', 'drizzle', 'thunderstorm', 'sleet'].some(word => condition.includes(word)) || Number(day.rainfall) >= 0.1) {
+                return 'Rainy';
+            }
+            if (['clear', 'sun'].some(word => condition.includes(word))) return 'Sunny';
+            return 'Cloudy';
+        },
+
+        weatherTone(day) {
+            return {
+                Rainy: 'text-blue-600',
+                Cloudy: 'text-gray-500',
+                Sunny: 'text-amber-600',
+            }[this.weatherLabel(day)];
+        },
+
         async load() {
             this.loading = true;
             try {
@@ -226,7 +244,11 @@ function forecastPage() {
                 this.hasForecast = res.has_forecast;
                 if (res.has_forecast) {
                     this.summary = res.summary;
-                    this.daily = res.daily;
+                    const weatherByDate = new Map((this.weather.forecast || []).map(day => [day.date, day]));
+                    this.daily = res.daily.map(day => ({
+                        ...day,
+                        condition: weatherByDate.get(day.date)?.condition || null,
+                    }));
                     this.lastPeriod = res.last_period;
                     this.fruits = res.fruits;
                     const perFruit = res.run?.metrics?.per_fruit || {};
