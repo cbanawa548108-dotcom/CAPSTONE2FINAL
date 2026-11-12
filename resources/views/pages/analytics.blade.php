@@ -27,6 +27,8 @@
     </select>
 </div>
 
+<div x-cloak x-show="loadError" class="mb-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-800" role="status" x-text="loadError"></div>
+
 {{-- KPIs --}}
 <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-7 fade-up delay-1">
     {{-- Revenue --}}
@@ -210,6 +212,7 @@ function analyticsController() {
         kpis: null,
         salesByFruit: [],
         charts: {},
+        loadError: '',
         
         formatNum(n) {
             if (!n && n !== 0) return '—';
@@ -224,24 +227,58 @@ function analyticsController() {
         
         async reloadData() {
             this.loading = true;
-            try {
-                const [kpis, trend, fruit, weekly, cumul, waste, stacked] = await Promise.all([
-                    fetch(`/api/analytics/kpis?days=${this.dateRange}`).then(r=>r.json()),
-                    fetch(`/api/analytics/revenue-trend?days=${this.dateRange}`).then(r=>r.json()),
-                    fetch(`/api/analytics/sales-by-fruit?days=${this.dateRange}`).then(r=>r.json()),
-                    fetch(`/api/analytics/weekly-sales?weeks=8`).then(r=>r.json()),
-                    fetch(`/api/analytics/cumulative-revenue?days=${this.dateRange}`).then(r=>r.json()),
-                    fetch(`/api/analytics/waste-reduction?months=6`).then(r=>r.json()),
-                    fetch(`/api/analytics/stacked-sales?months=6`).then(r=>r.json()),
-                ]);
-                this.kpis = kpis;
-                this.salesByFruit = fruit;
-                this.$nextTick(() => this.initCharts(kpis, trend, fruit, weekly, cumul, waste, stacked));
-            } catch(e) {
-                console.error('Analytics load error:', e);
-            } finally {
+            this.loadError = '';
+
+            const requests = [
+                ['KPIs', `/api/analytics/kpis?days=${this.dateRange}`, {}],
+                ['revenue trend', '/api/analytics/revenue-trend', { labels: [], revenue: [], cogs: [], profit: [] }],
+                ['sales by fruit', `/api/analytics/sales-by-fruit?days=${this.dateRange}`, []],
+                ['weekly sales', '/api/analytics/weekly-sales?weeks=8', { labels: [], data: [] }],
+                ['cumulative revenue', `/api/analytics/cumulative-revenue?days=${this.dateRange}`, { labels: [], data: [] }],
+                ['waste reduction', '/api/analytics/waste-reduction?months=6', { labels: [], data: [], colors: [] }],
+                ['stacked sales', '/api/analytics/stacked-sales?months=6', { labels: [], datasets: [] }],
+            ];
+            const results = await Promise.all(requests.map(async ([name, url, fallback]) => {
+                try {
+                    const response = await fetch(url, { headers: { Accept: 'application/json' } });
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                    if (!response.headers.get('content-type')?.includes('application/json')) {
+                        throw new Error('Expected a JSON response');
+                    }
+                    const data = await response.json();
+                    if (!data || typeof data !== 'object') throw new Error('Invalid JSON response');
+                    return data;
+                } catch (error) {
+                    console.error(`Analytics ${name} request failed:`, error);
+                    return { failed: name, data: fallback };
+                }
+            }));
+
+            const failedRequests = results.filter(result => result && result.failed).map(result => result.failed);
+            const [kpisResult, trendResult, fruitResult, weeklyResult, cumulResult, wasteResult, stackedResult] = results;
+            const kpis = kpisResult.failed ? null : kpisResult;
+            const trend = trendResult.failed ? trendResult.data : trendResult;
+            const fruit = fruitResult.failed || !Array.isArray(fruitResult) ? [] : fruitResult;
+            const weekly = weeklyResult.failed ? weeklyResult.data : weeklyResult;
+            const cumul = cumulResult.failed ? cumulResult.data : cumulResult;
+            const waste = wasteResult.failed ? wasteResult.data : wasteResult;
+            const stacked = stackedResult.failed ? stackedResult.data : stackedResult;
+
+            this.kpis = kpis;
+            this.salesByFruit = fruit;
+            this.loadError = failedRequests.length
+                ? `Some analytics data could not be loaded (${failedRequests.join(', ')}). Other available data is still shown; try refreshing the page.`
+                : '';
+
+            this.$nextTick(() => {
+                try {
+                    this.initCharts(kpis, trend, fruit, weekly, cumul, waste, stacked);
+                } catch (error) {
+                    console.error('Analytics chart initialization failed:', error);
+                    this.loadError = 'Analytics data loaded, but the charts could not be displayed. Refresh the page to try again.';
+                }
                 this.loading = false;
-            }
+            });
         },
         
         initCharts(kpis, trend, fruit, weekly, cumul, waste, stacked) {
