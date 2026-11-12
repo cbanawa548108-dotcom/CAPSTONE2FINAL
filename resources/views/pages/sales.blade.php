@@ -36,7 +36,7 @@
             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
         </div>
         <p class="text-[22px] font-black text-gray-900">₱{{ number_format($todayTotal, 2) }}</p>
-        <p class="text-[12.5px] text-gray-500 font-medium mt-0.5">Today's Total</p>
+        <p class="text-[12.5px] text-gray-500 font-medium mt-0.5">Selected Day Total</p>
     </div>
     
     <div class="card shimmer card-lift p-5">
@@ -71,7 +71,9 @@
             <svg class="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
             <input type="text" placeholder="Search transactions, fruit, cashier…" class="bg-transparent text-[13px] text-gray-700 outline-none w-full placeholder-gray-400">
         </div>
-        <input type="date" value="{{ now($timezone)->toDateString() }}" class="inp" style="width:auto;padding:10px 14px;border-radius:12px">
+        <form method="GET" action="{{ route('sales') }}">
+            <input type="date" name="date" value="{{ $selectedDate }}" class="inp" style="width:auto;padding:10px 14px;border-radius:12px" aria-label="Filter sales by date" onchange="this.form.submit()">
+        </form>
         <select class="inp" style="width:auto;padding:10px 14px;border-radius:12px">
             <option>All Fruits</option>
             <option>Mango</option><option>Durian</option><option>Pomelo</option>
@@ -80,7 +82,7 @@
         <select class="inp" style="width:auto;padding:10px 14px;border-radius:12px">
             <option>All Status</option><option>Completed</option><option>Pending</option><option>Cancelled</option>
         </select>
-        <button class="btn btn-outline btn-sm text-[12px] text-gray-500">Clear Filters</button>
+        <a href="{{ route('sales') }}" class="btn btn-outline btn-sm text-[12px] text-gray-500">Clear Filters</a>
     </div>
 </div>
 
@@ -175,8 +177,8 @@
                     <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
                 </svg>
             </div>
-            <h3 class="text-lg font-bold text-gray-900 mb-2">No Sales Transactions Yet</h3>
-            <p class="text-sm text-gray-500">Start selling to see transactions here</p>
+            <h3 class="text-lg font-bold text-gray-900 mb-2">No Sales on {{ \Carbon\Carbon::parse($selectedDate)->format('M j, Y') }}</h3>
+            <p class="text-sm text-gray-500">Choose another date to view its transactions.</p>
         </div>
     </td>
 </tr>

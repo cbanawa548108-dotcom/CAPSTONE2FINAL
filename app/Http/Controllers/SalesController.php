@@ -20,45 +20,52 @@ class SalesController extends Controller
     /**
      * Display the sales page.
      */
-    public function page()
+    public function page(Request $request)
     {
         $timezone = OwnerSetting::forUser(Auth::id())->timezone ?: config('app.timezone');
-        $todayStart = Carbon::now($timezone)->startOfDay();
-        $tomorrowStart = $todayStart->copy()->addDay();
-        $todayStart->utc();
-        $tomorrowStart->utc();
+        $validated = $request->validate([
+            'date' => ['nullable', 'date_format:Y-m-d'],
+        ]);
+        $selectedDate = isset($validated['date'])
+            ? Carbon::createFromFormat('Y-m-d', $validated['date'], $timezone)
+            : Carbon::now($timezone);
+        $dayStart = $selectedDate->copy()->startOfDay()->utc();
+        $nextDayStart = $dayStart->copy()->addDay();
 
-        // Get sales transactions
-        $sales = SalesTransaction::with(['salesItems.inventoryItem', 'salesItems.inventoryBatch.inventoryItem', 'user'])
+        $salesQuery = SalesTransaction::with(['salesItems.inventoryItem', 'salesItems.inventoryBatch.inventoryItem', 'user'])
             ->where('payment_method', '!=', 'adjustment') // Exclude adjustments
             ->where('type', 'sale') // Exclude spoilage/wastage write-offs
+            ->where('created_at', '>=', $dayStart)
+            ->where('created_at', '<', $nextDayStart);
+
+        $sales = $salesQuery
             ->orderByDesc('created_at')
             ->orderByDesc('id')
             ->paginate(10)
             ->withQueryString();
 
-        // Get today's stats
+        // Summary cards follow the date selected in the transaction filter.
         $todayTotal = SalesTransaction::completed()
             ->where('payment_method', '!=', 'adjustment')
-            ->where('created_at', '>=', $todayStart)
-            ->where('created_at', '<', $tomorrowStart)
+            ->where('created_at', '>=', $dayStart)
+            ->where('created_at', '<', $nextDayStart)
             ->sum('total_amount');
         
         $todayTransactions = SalesTransaction::completed()
             ->where('payment_method', '!=', 'adjustment')
-            ->where('created_at', '>=', $todayStart)
-            ->where('created_at', '<', $tomorrowStart)
+            ->where('created_at', '>=', $dayStart)
+            ->where('created_at', '<', $nextDayStart)
             ->count();
         
         $avgSaleValue = $todayTransactions > 0 ? $todayTotal / $todayTransactions : 0;
         
         // Get top seller today
         $topSeller = \App\Models\SalesItem::select('inventory_batch_id', DB::raw('SUM(quantity) as total_qty'))
-            ->whereHas('saleTransaction', function($q) use ($todayStart, $tomorrowStart) {
+            ->whereHas('saleTransaction', function($q) use ($dayStart, $nextDayStart) {
                 $q->completed()
                     ->where('payment_method', '!=', 'adjustment')
-                    ->where('created_at', '>=', $todayStart)
-                    ->where('created_at', '<', $tomorrowStart);
+                    ->where('created_at', '>=', $dayStart)
+                    ->where('created_at', '<', $nextDayStart);
             })
             ->groupBy('inventory_batch_id')
             ->orderByDesc('total_qty')
@@ -76,6 +83,7 @@ class SalesController extends Controller
             'avgSaleValue' => $avgSaleValue,
             'topSellerName' => $topSellerName,
             'timezone' => $timezone,
+            'selectedDate' => $selectedDate->toDateString(),
         ]);
     }
     
