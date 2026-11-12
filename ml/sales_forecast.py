@@ -273,6 +273,15 @@ def main():
             note = f"Weekday average (SARIMAX not used: {exc})"
             skipped.append({"fruit": name, "reason": str(exc)})
 
+        historical_limit = max(float(series.quantile(0.99)) * 3, float(series.mean()) * 5, 1.0)
+        database_limit = min(99_999_999.99, 9_999_999_999.99 / price) if price > 0 else 99_999_999.99
+        forecast_limit = min(historical_limit, database_limit)
+        if np.any(mean > forecast_limit) or np.any(lo > forecast_limit) or np.any(hi > forecast_limit):
+            note += "; extreme predictions bounded to historical demand"
+            mean = np.clip(mean, 0, forecast_limit)
+            lo = np.clip(lo, 0, forecast_limit)
+            hi = np.clip(hi, 0, forecast_limit)
+
         for i, d in enumerate(future_dates):
             w = fut_exog.iloc[i] if len(fut_exog) else {}
             rows.append((
