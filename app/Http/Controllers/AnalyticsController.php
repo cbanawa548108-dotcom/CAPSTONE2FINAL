@@ -21,6 +21,18 @@ class AnalyticsController extends Controller
         return view('pages.analytics');
     }
 
+    private function analyticsReferenceDate(): Carbon
+    {
+        $referenceDate = Carbon::now();
+        $latestSaleDate = SalesTransaction::completed()->max('created_at');
+
+        if ($latestSaleDate && Carbon::parse($latestSaleDate)->greaterThan($referenceDate)) {
+            $referenceDate = Carbon::parse($latestSaleDate);
+        }
+
+        return $referenceDate;
+    }
+
     /**
      * Get KPI metrics.
      */
@@ -29,15 +41,8 @@ class AnalyticsController extends Controller
         try {
             // Get date range from request or default to last 30 days (rolling window)
             $days = $request->input('days', 30);
-            $endDate = Carbon::now();
-            $startDate = Carbon::now()->subDays($days);
-            
-            // For demo data with future dates, use the actual max date in database
-            $maxDate = SalesTransaction::max('created_at');
-            if ($maxDate && Carbon::parse($maxDate)->isFuture()) {
-                $endDate = Carbon::parse($maxDate);
-                $startDate = $endDate->copy()->subDays($days);
-            }
+            $endDate = $this->analyticsReferenceDate();
+            $startDate = $endDate->copy()->subDays($days);
 
             // Total revenue in period
             $totalRevenue = SalesTransaction::completed()
@@ -200,8 +205,9 @@ class AnalyticsController extends Controller
     public function getRevenueTrend()
     {
         try {
-            $startDate = Carbon::now()->subMonths(5)->startOfMonth();
-            $endDate = Carbon::now()->endOfMonth();
+            $referenceDate = $this->analyticsReferenceDate();
+            $startDate = $referenceDate->copy()->startOfMonth()->subMonths(5);
+            $endDate = $referenceDate->copy()->endOfMonth();
 
             // Get revenue by month
             $revenueByMonth = SalesTransaction::completed()
@@ -242,7 +248,7 @@ class AnalyticsController extends Controller
             $profit = [];
 
             for ($i = 5; $i >= 0; $i--) {
-                $date = Carbon::now()->subMonths($i);
+                $date = $referenceDate->copy()->startOfMonth()->subMonths($i);
                 $monthKey = $date->format('Y-m');
                 $labels[] = $date->format('M');
                 
@@ -337,22 +343,24 @@ class AnalyticsController extends Controller
     public function getWeeklySales()
     {
         try {
-            $startDate = Carbon::now()->subWeeks(8)->startOfWeek();
-            $endDate = Carbon::now()->endOfWeek();
+            $referenceDate = $this->analyticsReferenceDate();
+            $startDate = $referenceDate->copy()->startOfWeek()->subWeeks(7);
+            $endDate = $referenceDate->copy()->endOfWeek();
 
             $salesByWeek = SalesTransaction::completed()
                 ->whereBetween('created_at', [$startDate, $endDate])
                 ->select(
-                    DB::raw('YEAR(created_at) as year'),
-                    DB::raw('WEEK(created_at, 1) as week'),
+                    DB::raw('DATE(created_at) as date'),
                     DB::raw('SUM(total_amount) as total_sales')
                 )
-                ->groupBy('year', 'week')
-                ->orderBy('year', 'asc')
-                ->orderBy('week', 'asc')
+                ->groupBy('date')
+                ->orderBy('date', 'asc')
                 ->get()
-                ->keyBy(function($item) {
-                    return $item->year . '-' . str_pad($item->week, 2, '0', STR_PAD_LEFT);
+                ->groupBy(function($item) {
+                    return Carbon::parse($item->date)->format('o-W');
+                })
+                ->map(function($items) {
+                    return $items->sum('total_sales');
                 });
 
             // Build 8-week array
@@ -360,12 +368,12 @@ class AnalyticsController extends Controller
             $data = [];
 
             for ($i = 7; $i >= 0; $i--) {
-                $date = Carbon::now()->subWeeks($i)->startOfWeek();
+                $date = $referenceDate->copy()->startOfWeek()->subWeeks($i);
                 $weekKey = $date->format('o-W'); // ISO year-week format
                 $weekNumber = 8 - $i;
                 $labels[] = 'W' . $weekNumber;
                 
-                $weekSales = $salesByWeek->get($weekKey)?->total_sales ?? 0;
+                $weekSales = $salesByWeek->get($weekKey, 0);
                 $data[] = round($weekSales, 2);
             }
 
@@ -389,14 +397,14 @@ class AnalyticsController extends Controller
     public function getCumulativeRevenue()
     {
         try {
-            $startOfMonth = Carbon::now()->startOfMonth();
-            $today = Carbon::now();
+            $referenceDate = $this->analyticsReferenceDate();
+            $startOfMonth = $referenceDate->copy()->startOfMonth();
             
             // Calculate days before using today in query to avoid mutation
-            $daysInMonth = $today->diffInDays($startOfMonth) + 1;
+            $daysInMonth = $referenceDate->day;
 
             $salesByDay = SalesTransaction::completed()
-                ->whereBetween('created_at', [$startOfMonth, $today->copy()->endOfDay()])
+                ->whereBetween('created_at', [$startOfMonth, $referenceDate->copy()->endOfDay()])
                 ->select(
                     DB::raw('DATE(created_at) as date'),
                     DB::raw('SUM(total_amount) as daily_sales')
@@ -440,15 +448,18 @@ class AnalyticsController extends Controller
     public function getWasteReduction()
     {
         try {
-            $startDate = Carbon::now()->subMonths(5)->startOfMonth();
-            $endDate = Carbon::now()->endOfMonth();
+            $referenceDate = $this->analyticsReferenceDate();
+            $latestReceivedDate = InventoryBatch::max('received_date');
+            if ($latestReceivedDate && Carbon::parse($latestReceivedDate)->greaterThan($referenceDate)) {
+                $referenceDate = Carbon::parse($latestReceivedDate);
+            }
 
             $labels = [];
             $data = [];
             $colors = [];
 
             for ($i = 5; $i >= 0; $i--) {
-                $date = Carbon::now()->subMonths($i);
+                $date = $referenceDate->copy()->startOfMonth()->subMonths($i);
                 $monthStart = $date->copy()->startOfMonth();
                 $monthEnd = $date->copy()->endOfMonth();
                 
@@ -460,9 +471,9 @@ class AnalyticsController extends Controller
 
                 // Expired in this month
                 $expired = InventoryBatch::whereBetween('expiry_date', [$monthStart, $monthEnd])
-                    ->where(function($q) {
+                    ->where(function($q) use ($referenceDate) {
                         $q->where('status', 'expired')
-                            ->orWhere('expiry_date', '<', now());
+                            ->orWhere('expiry_date', '<=', $referenceDate->toDateString());
                     })
                     ->sum('quantity');
 
@@ -533,8 +544,9 @@ class AnalyticsController extends Controller
                 ]);
             }
 
-            $startDate = Carbon::now()->subMonths(5)->startOfMonth();
-            $endDate = Carbon::now()->endOfMonth();
+            $referenceDate = $this->analyticsReferenceDate();
+            $startDate = $referenceDate->copy()->startOfMonth()->subMonths(5);
+            $endDate = $referenceDate->copy()->endOfMonth();
 
             // Get sales by product and month
             $salesData = SalesItem::whereHas('saleTransaction', function($q) use ($startDate, $endDate) {
@@ -556,7 +568,7 @@ class AnalyticsController extends Controller
             // Build labels (last 6 months)
             $labels = [];
             for ($i = 5; $i >= 0; $i--) {
-                $labels[] = Carbon::now()->subMonths($i)->format('M');
+                $labels[] = $referenceDate->copy()->startOfMonth()->subMonths($i)->format('M');
             }
 
             // Build datasets
@@ -567,7 +579,7 @@ class AnalyticsController extends Controller
                 $productData = [];
                 
                 for ($i = 5; $i >= 0; $i--) {
-                    $monthKey = Carbon::now()->subMonths($i)->format('Y-m');
+                    $monthKey = $referenceDate->copy()->startOfMonth()->subMonths($i)->format('Y-m');
                     $sales = $salesData->get($product->inventory_item_id)?->get($monthKey) ?? 0;
                     $productData[] = round($sales, 2);
                 }
