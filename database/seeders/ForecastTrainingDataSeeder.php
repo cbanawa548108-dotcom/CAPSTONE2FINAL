@@ -18,13 +18,22 @@ class ForecastTrainingDataSeeder extends Seeder
     public function run(): void
     {
         $items = DB::table('inventory_items')
-            ->where('status', 'active')
-            ->where('category', 'Fruit')
+            ->where(function ($query) {
+                $query->whereRaw('LOWER(category) LIKE ?', ['%fruit%'])
+                    ->orWhereExists(function ($sales) {
+                        $sales->selectRaw('1')
+                            ->from('sales_items as si')
+                            ->join('sales_transactions as st', 'st.id', '=', 'si.sale_transaction_id')
+                            ->whereColumn('si.inventory_item_id', 'inventory_items.id')
+                            ->where('st.status', 'completed')
+                            ->where('st.type', 'sale');
+                    });
+            })
             ->orderBy('id')
             ->get(['id', 'name']);
 
         if ($items->isEmpty()) {
-            throw new RuntimeException('No active fruit inventory items found for forecast demo data.');
+            throw new RuntimeException('No fruit inventory items or completed fruit sales found for forecast demo data.');
         }
 
         $timezone = config('services.openweather.timezone');
