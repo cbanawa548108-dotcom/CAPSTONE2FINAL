@@ -90,7 +90,7 @@
     <div class="flex items-center justify-between mb-4">
         <div>
             <h3 class="font-bold text-gray-900 text-[15px]">Weather Outlook · <span x-text="weather.city"></span></h3>
-            <p class="text-[12px] text-gray-400 mt-0.5">Exogenous variables fed to SARIMAX (OpenWeather)</p>
+            <p class="text-[12px] text-gray-400 mt-0.5">Daily weather forecast · conditions can change</p>
         </div>
         <template x-if="weather.current">
             <div class="text-right">
@@ -220,11 +220,11 @@ function forecastPage() {
 
         weatherLabel(day) {
             const condition = String(day.condition || '').toLowerCase();
-            if (['rain', 'drizzle', 'thunderstorm', 'sleet'].some(word => condition.includes(word)) || Number(day.rainfall) >= 0.1) {
-                return 'Rainy';
-            }
+            if (['rain', 'drizzle', 'thunderstorm', 'sleet'].some(word => condition.includes(word))) return 'Rainy';
             if (['clear', 'sun'].some(word => condition.includes(word))) return 'Sunny';
-            return 'Cloudy';
+            if (condition) return 'Cloudy';
+
+            return Number(day.rainfall) >= 1 ? 'Rainy' : 'Cloudy';
         },
 
         weatherTone(day) {
