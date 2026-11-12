@@ -103,12 +103,16 @@
                 @endforeach
             </div>
         </div>
-        <canvas id="revProfitChart" height="130"></canvas>
+        <div class="relative h-72 w-full">
+            <canvas id="revProfitChart" class="!h-full !w-full"></canvas>
+        </div>
     </div>
     <div class="card p-6">
         <h3 class="font-bold text-gray-900 text-[15px] mb-1">Sales by Fruit</h3>
         <p class="text-[12px] text-gray-400 mb-4">Revenue distribution this month</p>
-        <canvas id="fruitPieChart" height="170"></canvas>
+        <div class="relative h-56 w-full">
+            <canvas id="fruitPieChart" class="!h-full !w-full"></canvas>
+        </div>
         <div class="mt-4 space-y-2">
             <template x-for="(fruit, index) in salesByFruit" :key="index">
                 <div class="flex items-center justify-between">
@@ -298,7 +302,7 @@ function analyticsController() {
                         {label:'COGS', data: trend.cogs||[], borderColor:'#F97316', borderDash:[5,5], fill:false, tension:.4, borderWidth:2, pointRadius:3}
                     ]
                 },
-                options:{responsive:true,plugins:{legend:{position:'top',labels:{font:{size:11}}}},scales:{x:{grid:{display:false}},y:{grid:{color:gc},border:{display:false},ticks:{font:{size:10},color:'#9CA3AF',callback:v=>'₱'+(v/1000).toFixed(0)+'k'}}}}
+                options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top',labels:{font:{size:11}}}},scales:{x:{grid:{display:false}},y:{grid:{color:gc},border:{display:false},ticks:{font:{size:10},color:'#9CA3AF',callback:v=>'₱'+(v/1000).toFixed(0)+'k'}}}}
             });
             
             // Fruit Pie
@@ -308,7 +312,7 @@ function analyticsController() {
                     labels: (fruit||[]).map(f=>f.name),
                     datasets:[{data:(fruit||[]).map(f=>f.percentage), backgroundColor:(fruit||[]).map(f=>f.color), borderWidth:0, hoverOffset:10}]
                 },
-                options:{responsive:true,plugins:{legend:{display:false}}}
+                options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}}}
             });
             
             // Weekly Bar
