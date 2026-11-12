@@ -39,7 +39,7 @@ $roleNames = [
 $userRole = $roleNames[$user->role ?? 'owner'] ?? 'User';
 @endphp
 
-<aside x-bind:class="sidebarOpen ? 'w-[260px]' : 'w-[72px]'"
+<aside x-bind:class="window.innerWidth < 768 ? (sidebarOpen ? 'w-[260px] mobile-open' : 'w-[260px]') : (sidebarOpen ? 'w-[260px]' : 'w-[72px]')"
        class="sidebar sticky top-0 self-start bg-white border-r border-[rgba(124,58,237,.08)] shadow-[2px_0_20px_rgba(124,58,237,.06)] flex flex-col h-screen flex-shrink-0 z-40 overflow-hidden">
 
     {{-- Logo --}}
@@ -73,6 +73,7 @@ $userRole = $roleNames[$user->role ?? 'owner'] ?? 'User';
                     @if(in_array($user->role ?? 'owner', $allowedRoles))
                         @php $active = $route === $r; @endphp
                         <a href="{{ route($r) }}" data-tip="{{ $label }}"
+                           @click="if (window.innerWidth < 768) sidebarOpen = false"
                            class="nav-link {{ $active ? 'active' : '' }}">
                             <svg class="w-[18px] h-[18px] flex-shrink-0 {{ $active ? 'text-white' : 'text-gray-400 group-hover:text-violet-600' }} transition-colors"
                                  fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">

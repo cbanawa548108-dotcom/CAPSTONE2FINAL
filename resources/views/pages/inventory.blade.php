@@ -746,7 +746,7 @@ function inventoryData() {
 }
 </script>
 
-<div x-data="inventoryData()" @open-add.window="stockInModal=true" class="flex gap-6">
+<div x-data="inventoryData()" @open-add.window="stockInModal=true" class="inventory-layout flex gap-6">
 
 {{-- Expandable Sidebar --}}
 <div class="transition-all duration-300 flex-shrink-0"

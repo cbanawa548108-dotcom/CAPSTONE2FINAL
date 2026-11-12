@@ -243,6 +243,67 @@
         .dark [class*="text-gray-4"] { color:#9CA3AF !important; }
         .dark [class*="border-gray-"], .dark [class*="border-violet-"], .dark .border-b, .dark .border-t { border-color:rgba(124,58,237,.22) !important; }
         .dark .inp, .dark input, .dark select, .dark textarea { background-color:#16122B !important; color:#E5E7EB !important; border-color:rgba(124,58,237,.3) !important; }
+
+        @media (max-width: 767px) {
+            html, body { width:100%; max-width:100%; overflow-x:hidden; }
+            body { min-height:100dvh; }
+            main { min-width:0; max-width:100vw; padding:14px !important; overflow-x:hidden; zoom:1 !important; }
+            main.pos-full { padding:0 !important; overflow:visible !important; }
+            .sidebar {
+                position:fixed !important;
+                inset:0 auto 0 0;
+                width:260px !important;
+                height:100dvh !important;
+                transform:translateX(-105%);
+                transition:transform .25s ease;
+                z-index:60;
+            }
+            .sidebar.mobile-open { transform:translateX(0); }
+            header {
+                position:sticky;
+                top:0;
+                height:60px !important;
+                min-height:60px;
+                padding-left:10px !important;
+                padding-right:10px !important;
+                gap:4px;
+            }
+            header > div:first-child { gap:6px; }
+            header button { padding:8px; }
+            main .grid-cols-5,
+            main .grid-cols-4 { grid-template-columns:repeat(2,minmax(0,1fr)); }
+            main .grid-cols-3 { grid-template-columns:repeat(2,minmax(0,1fr)); }
+            main .card { min-width:0; border-radius:18px; }
+            .inventory-layout { display:block; }
+            .inventory-layout > div:first-child { width:auto !important; margin-bottom:16px; }
+            .inventory-layout > div:first-child > .card { position:relative; top:auto; height:auto; }
+            .inventory-layout nav { overflow-x:auto; overflow-y:hidden; padding:8px 0; }
+            .inventory-layout nav > div { display:flex; gap:8px; padding:0 10px; }
+            .inventory-layout nav a { flex-shrink:0; }
+            main .tbl {
+                display:block;
+                width:100%;
+                max-width:100%;
+                overflow-x:auto;
+                -webkit-overflow-scrolling:touch;
+                white-space:nowrap;
+            }
+            main .tbl thead th,
+            main .tbl tbody td { padding:10px 12px; }
+            main canvas { max-width:100%; }
+            main input:not([type="checkbox"]):not([type="radio"]),
+            main select,
+            main textarea { max-width:100%; }
+            .page-enter { min-width:0; }
+        }
+
+        @media (max-width: 420px) {
+            main { padding:12px !important; }
+            main .grid-cols-3 { grid-template-columns:1fr; }
+            main .card { padding-left:14px; padding-right:14px; }
+            header .gap-2 { gap:2px; }
+            .nav-link { min-height:44px; }
+        }
     </style>
     {{-- Saved appearance: colour theme + font size --}}
     <style id="ftAppearance">
@@ -253,10 +314,12 @@
     </style>
 </head>
 <body x-cloak>
-<div class="flex min-h-screen w-full bg-[#F5F3FF]">
+<div class="flex min-h-screen w-full bg-[#F5F3FF]" @keydown.escape.window="sidebarOpen = false">
 
     {{-- ╔══════════ SIDEBAR ══════════╗ --}}
     @include('partials.sidebar')
+    <div x-cloak x-show="sidebarOpen && window.innerWidth < 768" @click="sidebarOpen = false"
+         class="fixed inset-0 bg-black/40 z-50 md:hidden" aria-hidden="true"></div>
 
     {{-- ╔══════════ MAIN AREA ══════════╗ --}}
     <div class="flex flex-1 flex-col min-w-0">
@@ -265,7 +328,7 @@
         @include('partials.navbar')
 
         {{-- PAGE CONTENT --}}
-        <main class="flex-1 overflow-visible bg-[#F5F3FF] p-6">
+        <main class="flex-1 min-w-0 overflow-visible bg-[#F5F3FF] p-6">
             @include('partials.breadcrumb')
             <div class="page-enter">
                 {{ $slot }}
@@ -283,7 +346,7 @@
 <script>
 function appState(dark = false) {
     return {
-        sidebarOpen: true,
+        sidebarOpen: window.innerWidth >= 768,
         darkMode: dark,
         aiOpen: false,
         init() {

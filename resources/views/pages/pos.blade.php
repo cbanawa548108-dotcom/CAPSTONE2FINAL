@@ -161,6 +161,21 @@ main.pos-full { padding: 0 !important; overflow: hidden !important; }
 input[type=number]::-webkit-inner-spin-button,
 input[type=number]::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
 input[type=number] { -moz-appearance: textfield; }
+
+@media (max-width: 767px) {
+    main.pos-full { overflow:visible !important; }
+    .pos-mobile-shell { height:auto !important; min-height:calc(100dvh - 60px); overflow:visible; }
+    .pos-header { min-height:56px; height:auto; padding:8px 10px; gap:8px; }
+    .pos-header img { width:96px !important; max-width:96px !important; }
+    .pos-header > .w-px,
+    .pos-header > button[title="Scan Barcode"] { display:none; }
+    .pos-mobile-split { flex-direction:column; overflow:visible; }
+    .pos-mobile-catalog { width:100% !important; height:60vh; min-height:420px; max-height:60vh; flex-shrink:0; border-right:0 !important; }
+    .pos-mobile-cart { width:100% !important; height:auto !important; max-height:none !important; overflow:visible !important; }
+    .pos-mobile-cart [style*="max-height: calc(100vh - 200px)"] { max-height:45vh !important; }
+    .pos-mobile-shell .grid-cols-4 { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .ls-panel { left:12px; bottom:12px; }
+}
 </style>
 @endpush
 
@@ -177,7 +192,7 @@ document.addEventListener('DOMContentLoaded',()=>{
 {{-- ═══════════════════════════════════════════════════════════
      POS WRAPPER  (x-data holds all state)
 ═══════════════════════════════════════════════════════════ --}}
-<div x-data="posApp()" class="flex flex-col h-full bg-[#F5F3FF]" style="height:calc(100vh - 68px)">
+<div x-data="posApp()" class="pos-mobile-shell flex flex-col h-full bg-[#F5F3FF]" style="height:calc(100vh - 68px)">
 
     {{-- ══════════════════ POS HEADER ══════════════════ --}}
     <div class="pos-header z-30">
@@ -259,10 +274,10 @@ document.addEventListener('DOMContentLoaded',()=>{
     </div>
 
     {{-- ══════════════════ SPLIT LAYOUT ══════════════════ --}}
-    <div class="flex flex-1 overflow-hidden">
+    <div class="pos-mobile-split flex flex-1 overflow-hidden">
 
         {{-- ═══════ LEFT PANEL — FRUIT CATALOG (70%) ═══════ --}}
-        <div class="flex flex-col bg-[#F5F3FF]" style="width:70%;border-right:1px solid rgba(124,58,237,.08)">
+        <div class="pos-mobile-catalog flex flex-col bg-[#F5F3FF]" style="width:70%;border-right:1px solid rgba(124,58,237,.08)">
 
             {{-- Category + search bar --}}
             <div class="bg-white border-b border-[rgba(124,58,237,.07)] px-5 py-3 flex-shrink-0">
@@ -374,7 +389,7 @@ document.addEventListener('DOMContentLoaded',()=>{
         </div>
 
         {{-- ═══════ RIGHT PANEL — CART & CHECKOUT (30%) ═══════ --}}
-        <div class="flex flex-col bg-white" style="width:30%; height: 100%; max-height: calc(100vh - 68px); overflow: hidden;">
+        <div class="pos-mobile-cart flex flex-col bg-white" style="width:30%; height: 100%; max-height: calc(100vh - 68px); overflow: hidden;">
 
             {{-- Cart header --}}
             <div class="flex items-center justify-between px-5 py-3.5 border-b border-[rgba(124,58,237,.07)] flex-shrink-0">
