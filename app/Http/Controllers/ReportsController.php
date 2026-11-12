@@ -210,6 +210,14 @@ class ReportsController extends Controller
             ];
         })->sortByDesc('actual')->values();
 
+        $scoredErrors = [];
+        foreach ($forecasts as $forecast) {
+            $actual = (float) (($actuals[$forecast->item_id] ?? collect())[$forecast->d] ?? 0);
+            if ($actual > 0) {
+                $scoredErrors[] = abs((float) $forecast->predicted - $actual) / $actual * 100;
+            }
+        }
+
         // Daily accuracy keeps multiple scored days visible instead of combining
         // them into a single weekly point.
         $dates = [];
@@ -243,14 +251,12 @@ class ReportsController extends Controller
         // Model health comes from the latest SARIMAX training run
         $run = DB::table('ml_model_runs')->where('model', 'SARIMAX')->orderByDesc('id')->first();
         $metrics = $run ? (json_decode($run->metrics ?? 'null', true) ?: []) : [];
-        $mapes = collect($metrics['per_fruit'] ?? [])->pluck('mape')->filter(fn ($v) => $v !== null);
-
         return response()->json([
             'period' => $this->periodPayload($c),
             'summary' => [
                 'overall_accuracy' => $overall,
                 'model_accuracy' => $metrics['overall_accuracy'] ?? null,
-                'mape' => $mapes->isNotEmpty() ? round($mapes->avg(), 1) : null,
+                'mape' => $scoredErrors !== [] ? round(array_sum($scoredErrors) / count($scoredErrors), 1) : null,
                 'model' => $run ? 'SARIMAX' : null,
                 'model_status' => $run->status ?? null,
                 'trained_at' => $run ? Carbon::parse($run->created_at)->setTimezone($c['tz'])->format('M j, Y') : null,
@@ -258,7 +264,7 @@ class ReportsController extends Controller
                 'real_training_rows' => $metrics['real_training_rows'] ?? null,
                 'demo_training_rows' => $metrics['demo_training_rows'] ?? null,
                 'fruits_modeled' => $metrics['fruits_modeled'] ?? null,
-                'scored_days' => $forecasts->pluck('d')->unique()->count(),
+                'scored_days' => count($scoredErrors),
             ],
             'fruits' => $fruits,
             'accuracy_trend' => ['labels' => $labels, 'series' => $series],
