@@ -105,16 +105,21 @@ class InventoryController extends Controller
                 return [
                     $batch->batch_code, // 0: batch_code
                     $batch->inventoryItem->name ?? 'Unknown', // 1: product_name
-                    number_format($batch->quantity, 0) . ' kg', // 2: quantity
+                    number_format($batch->initial_quantity ?? $batch->quantity, 0) . ' kg', // 2: quantity received
                     $batch->supplier ?? 'N/A', // 3: supplier
                     $batch->received_date ? $batch->received_date->format('M d, Y') : 'N/A', // 4: date
                     '₱' . number_format($batch->quantity * $batch->price_per_unit, 2), // 5: total_value
                     'Received', // 6: status
+                    $batch->received_date ? $batch->received_date->format('Y-m-d') : '', // 7: date filter
+                    $batch->created_at?->timestamp ?? ($batch->received_date?->timestamp ?? 0), // 8: sort timestamp
                 ];
             });
 
         // Get Stock Out Records (from sales transactions)
         $stockOutRecords = \App\Models\SalesTransaction::with('salesItems.inventoryBatch.inventoryItem')
+            ->where(function ($query) {
+                $query->whereNull('payment_method')->orWhere('payment_method', '!=', 'adjustment');
+            })
             ->orderBy('created_at', 'desc')
             ->take(20)
             ->get()
@@ -139,10 +144,12 @@ class InventoryController extends Controller
                     $transaction->transaction_code, // 0: transaction_code
                     $itemName, // 1: product_name
                     number_format($totalQty, 0) . ' kg', // 2: quantity
-                    'Sales Transaction', // 3: type
+                    ucfirst(str_replace('_', ' ', $transaction->type ?? 'sale')), // 3: type
                     $date, // 4: date
                     '₱' . number_format($transaction->total_amount, 2), // 5: amount
                     ucfirst($transaction->status), // 6: status
+                    $transaction->created_at->format('Y-m-d'), // 7: date filter
+                    $transaction->created_at->timestamp, // 8: sort timestamp
                 ];
             });
 
@@ -160,7 +167,8 @@ class InventoryController extends Controller
                     : 'Multiple Items';
                 
                 $totalQty = $transaction->salesItems->sum('quantity');
-                $qtyDisplay = ($totalQty >= 0 ? '+' : '') . number_format(abs($totalQty), 0) . ' kg';
+                $isAddition = (float) $transaction->total_amount >= 0;
+                $qtyDisplay = ($isAddition ? '+' : '-') . number_format(abs($totalQty), 0) . ' kg';
                 
                 // Format date
                 $date = $transaction->created_at->format('M d, Y g:i A');
@@ -170,7 +178,7 @@ class InventoryController extends Controller
                     $date = 'Yesterday, ' . $transaction->created_at->format('g:i A');
                 }
                 
-                $badgeClass = $totalQty >= 0 ? 'badge-green' : 'badge-red';
+                $badgeClass = $isAddition ? 'badge-green' : 'badge-red';
                 $userName = $transaction->user ? $transaction->user->name : 'System';
                 
                 return [
@@ -181,8 +189,49 @@ class InventoryController extends Controller
                     $date, // 4: date
                     $userName, // 5: user_name
                     $badgeClass, // 6: badge_class
+                    $transaction->created_at->format('Y-m-d'), // 7: date filter
+                    $transaction->created_at->timestamp, // 8: sort timestamp
                 ];
             });
+
+        $historyRecords = collect();
+        foreach ($stockInRecords as $record) {
+            $historyRecords->push([
+                'type' => 'Stock In',
+                'item' => $record[1],
+                'reference' => $record[0],
+                'quantity' => '+' . $record[2],
+                'details' => $record[3],
+                'date' => $record[4],
+                'date_filter' => $record[7],
+                'timestamp' => $record[8],
+            ]);
+        }
+        foreach ($stockOutRecords as $record) {
+            $historyRecords->push([
+                'type' => $record[3],
+                'item' => $record[1],
+                'reference' => $record[0],
+                'quantity' => '-' . $record[2],
+                'details' => $record[3],
+                'date' => $record[4],
+                'date_filter' => $record[7],
+                'timestamp' => $record[8],
+            ]);
+        }
+        foreach ($adjustmentRecords as $record) {
+            $historyRecords->push([
+                'type' => 'Adjustment',
+                'item' => $record[1],
+                'reference' => $record[0],
+                'quantity' => $record[2],
+                'details' => $record[3],
+                'date' => $record[4],
+                'date_filter' => $record[7],
+                'timestamp' => $record[8],
+            ]);
+        }
+        $historyRecords = $historyRecords->sortByDesc('timestamp')->values();
 
         return view('pages.inventory', [
             'groupedItems' => $groupedItems,
@@ -191,6 +240,7 @@ class InventoryController extends Controller
             'stockInRecords' => $stockInRecords,
             'stockOutRecords' => $stockOutRecords,
             'adjustmentRecords' => $adjustmentRecords,
+            'historyRecords' => $historyRecords,
         ]);
     }
     
@@ -402,8 +452,8 @@ class InventoryController extends Controller
                     'status' => 'available',
                 ]);
 
-                // Update inventory item stock and price
-                $inventoryItem->increment('stock_quantity', $itemData['quantity']);
+                // Keep the product total derived from its available batches.
+                $inventoryItem->syncStockQuantityFromBatches();
                 $inventoryItem->update(['price_per_unit' => $itemData['price_per_unit']]);
             }
 
@@ -480,6 +530,7 @@ class InventoryController extends Controller
             ]);
             
             // Process each item
+            $affectedItemIds = [];
             foreach ($transactionItems as $itemData) {
                 $batch = $itemData['batch'];
                 
@@ -493,14 +544,18 @@ class InventoryController extends Controller
                     'total_amount' => $itemData['total'],
                 ]);
                 
-                // Reduce batch and item stock
+                // Reduce batch stock.
                 $batch->decrement('quantity', $itemData['quantity']);
-                $batch->inventoryItem->decrement('stock_quantity', $itemData['quantity']);
 
                 // Update batch status if quantity is 0
                 if ($batch->quantity <= 0) {
                     $batch->update(['status' => 'depleted']);
                 }
+                $affectedItemIds[$batch->inventory_item_id] = true;
+            }
+
+            foreach (array_keys($affectedItemIds) as $itemId) {
+                InventoryItem::findOrFail($itemId)->syncStockQuantityFromBatches();
             }
 
             DB::commit();
@@ -540,6 +595,7 @@ class InventoryController extends Controller
             $totalAmount = 0;
             $transactionItems = [];
             
+            $affectedItemIds = [];
             foreach ($validated['items'] as $itemData) {
                 $batch = InventoryBatch::findOrFail($itemData['batch_id']);
                 $adjustmentQty = abs($itemData['quantity']);
@@ -558,18 +614,22 @@ class InventoryController extends Controller
                 
                 if ($validated['type'] === 'add') {
                     $batch->increment('quantity', $adjustmentQty);
-                    $batch->inventoryItem->increment('stock_quantity', $adjustmentQty);
+                    $batch->update(['status' => 'available']);
                 } else {
                     if ($batch->quantity < $adjustmentQty) {
                         throw new \Exception("Cannot subtract more than available stock for batch {$batch->batch_code}");
                     }
                     $batch->decrement('quantity', $adjustmentQty);
-                    $batch->inventoryItem->decrement('stock_quantity', $adjustmentQty);
 
                     if ($batch->quantity <= 0) {
                         $batch->update(['status' => 'depleted']);
                     }
                 }
+                $affectedItemIds[$batch->inventory_item_id] = true;
+            }
+
+            foreach (array_keys($affectedItemIds) as $itemId) {
+                InventoryItem::findOrFail($itemId)->syncStockQuantityFromBatches();
             }
             
             // Create adjustment transaction record (using sales_transactions table)

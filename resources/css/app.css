@@ -148,3 +148,29 @@ body {
 .skeleton {
     background: linear-gradient(90deg, var(--brand-100) 25%, var(--brand-200) 50%, var(--brand-100) 75%) !important;
 }
+
+.notification-row {
+    background-color: #fff !important;
+}
+
+.notification-row:hover {
+    background-color: #F9FAFB !important;
+}
+
+.notification-urgent-edge {
+    background-color: #DC2626 !important;
+}
+
+.notification-urgent-title {
+    color: #B91C1C !important;
+}
+
+.notification-urgent-badge {
+    background-color: #FEE2E2 !important;
+    color: #B91C1C !important;
+}
+
+.notification-severity-critical {
+    background-color: #FEE2E2 !important;
+    color: #B91C1C !important;
+}

@@ -27,6 +27,8 @@
     </div>
 </div>
 
+@include('pages.partials.weather-summary')
+
 {{-- Stats --}}
 <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 fade-up delay-1">
     <div class="card shimmer card-lift p-5">
@@ -92,34 +94,45 @@
             <tbody>
 @if(isset($sales) && count($sales) > 0)
 @foreach($sales as $sale)
+@php $saleDate = $sale->created_at->copy()->setTimezone($timezone); @endphp
 <tr>
     <td class="font-mono text-[12px] text-gray-500">{{ $sale->transaction_code }}</td>
     <td>
-        <div class="flex items-center gap-2">
+        <div class="flex items-start gap-2">
             <div class="w-8 h-8 rounded-xl flex items-center justify-center bg-gray-100 border border-gray-200 text-gray-400 flex-shrink-0">
                 <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
                 </svg>
             </div>
-            <span class="font-semibold text-gray-800 text-[13.5px]">
-                @php
-                    $firstItem = $sale->salesItems->first();
-                    $itemName = $firstItem && $firstItem->inventoryBatch && $firstItem->inventoryBatch->inventoryItem 
-                        ? $firstItem->inventoryBatch->inventoryItem->name 
-                        : 'N/A';
-                    $itemCount = $sale->salesItems->count();
-                @endphp
-                {{ $itemName }}@if($itemCount > 1) <span class="text-gray-400 text-xs">+{{ $itemCount - 1 }} more</span>@endif
-            </span>
+            <div class="flex flex-col gap-1.5">
+                @forelse($sale->salesItems as $saleItem)
+                    @php $itemProduct = $saleItem->inventoryItem ?? $saleItem->inventoryBatch?->inventoryItem; @endphp
+                    <span class="font-semibold text-gray-800 text-[13.5px]">{{ $itemProduct?->name ?? 'N/A' }}</span>
+                @empty
+                    <span class="font-semibold text-gray-800 text-[13.5px]">N/A</span>
+                @endforelse
+            </div>
         </div>
     </td>
-    <td class="text-gray-500 text-[13px]">{{ number_format($sale->salesItems->sum('quantity'), 2) }} kg</td>
     <td class="text-gray-500 text-[13px]">
-        @php
-            $firstItem = $sale->salesItems->first();
-            $unitPrice = $firstItem ? $firstItem->unit_price : 0;
-        @endphp
-        ₱{{ number_format($unitPrice, 2) }}/kg
+        <div class="flex flex-col gap-1.5">
+            @forelse($sale->salesItems as $saleItem)
+                @php $itemProduct = $saleItem->inventoryItem ?? $saleItem->inventoryBatch?->inventoryItem; @endphp
+                <span>{{ number_format($saleItem->quantity, 2) }} {{ $itemProduct?->unit ?? 'kg' }}</span>
+            @empty
+                <span>—</span>
+            @endforelse
+        </div>
+    </td>
+    <td class="text-gray-500 text-[13px]">
+        <div class="flex flex-col gap-1.5">
+            @forelse($sale->salesItems as $saleItem)
+                @php $itemProduct = $saleItem->inventoryItem ?? $saleItem->inventoryBatch?->inventoryItem; @endphp
+                <span>₱{{ number_format($saleItem->unit_price, 2) }}/{{ $itemProduct?->unit ?? 'kg' }}</span>
+            @empty
+                <span>—</span>
+            @endforelse
+        </div>
     </td>
     <td class="font-bold text-gray-900">₱{{ number_format($sale->total_amount, 2) }}</td>
     <td>
@@ -131,12 +144,12 @@
         </div>
     </td>
     <td class="text-[12px] text-gray-400">
-        @if($sale->created_at->isToday())
-            Today, {{ $sale->created_at->format('g:i A') }}
-        @elseif($sale->created_at->isYesterday())
-            Yesterday, {{ $sale->created_at->format('g:i A') }}
+        @if($saleDate->isSameDay(now($timezone)))
+            Today, {{ $saleDate->format('g:i A') }}
+        @elseif($saleDate->isSameDay(now($timezone)->subDay()))
+            Yesterday, {{ $saleDate->format('g:i A') }}
         @else
-            {{ $sale->created_at->format('M d, g:i A') }}
+            {{ $saleDate->format('M d, g:i A') }}
         @endif
     </td>
     <td>
@@ -171,15 +184,59 @@
             </tbody>
         </table>
     </div>
-    <div class="flex items-center justify-between px-6 py-4 border-t border-gray-100 bg-gray-50/50">
-        <p class="text-[12.5px] text-gray-500">Showing <span class="font-bold text-gray-800">1–10</span> of <span class="font-bold text-gray-800">247</span> transactions</p>
-        <div class="flex items-center gap-1.5">
-            <button class="w-8 h-8 flex items-center justify-center rounded-xl text-gray-400 hover:bg-gray-100 border border-gray-200 transition-colors"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg></button>
-            @foreach([1,2,3,'…',24,25] as $p)
-            <button class="w-8 h-8 flex items-center justify-center rounded-lg text-[12.5px] font-semibold transition-all {{ $p===1 ? 'g-violet text-white shadow-sm' : 'text-gray-600 hover:bg-gray-200' }}">{{ $p }}</button>
-            @endforeach
-            <button class="w-8 h-8 flex items-center justify-center rounded-xl text-gray-400 hover:bg-gray-100 border border-gray-200 transition-colors"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg></button>
-        </div>
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-6 py-4 border-t border-gray-100 bg-gray-50/50">
+        <p class="text-[12.5px] text-gray-500">
+            Showing <span class="font-bold text-gray-800">{{ $sales->firstItem() ?? 0 }}–{{ $sales->lastItem() ?? 0 }}</span>
+            of <span class="font-bold text-gray-800">{{ $sales->total() }}</span> transactions
+        </p>
+        @if($sales->lastPage() > 1)
+            @php
+                $currentPage = $sales->currentPage();
+                $lastPage = $sales->lastPage();
+                $startPage = max(1, $currentPage - 1);
+                $endPage = min($lastPage, $currentPage + 1);
+                $pageLinks = range($startPage, $endPage);
+
+                if ($startPage > 1) {
+                    array_unshift($pageLinks, 1);
+                    if ($startPage > 2) {
+                        array_splice($pageLinks, 1, 0, ['…']);
+                    }
+                }
+
+                if ($endPage < $lastPage) {
+                    if ($endPage < $lastPage - 1) {
+                        $pageLinks[] = '…';
+                    }
+                    $pageLinks[] = $lastPage;
+                }
+            @endphp
+            <nav class="flex items-center gap-1.5" aria-label="Sales transaction pagination">
+                <a href="{{ $sales->previousPageUrl() ?? '#' }}"
+                   @if($sales->onFirstPage()) aria-disabled="true" tabindex="-1" @endif
+                   class="w-8 h-8 flex items-center justify-center rounded-xl border border-gray-200 transition-colors {{ $sales->onFirstPage() ? 'text-gray-300 pointer-events-none' : 'text-gray-500 hover:bg-gray-100' }}"
+                   aria-label="Previous page">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
+                </a>
+                @foreach($pageLinks as $page)
+                    @if($page === '…')
+                        <span class="w-8 h-8 flex items-center justify-center text-gray-400" aria-hidden="true">…</span>
+                    @else
+                        <a href="{{ $sales->url($page) }}"
+                           @if($page === $currentPage) aria-current="page" @endif
+                           class="w-8 h-8 flex items-center justify-center rounded-lg text-[12.5px] font-semibold transition-all {{ $page === $currentPage ? 'g-violet text-white shadow-sm' : 'text-gray-600 hover:bg-gray-200' }}">
+                            {{ $page }}
+                        </a>
+                    @endif
+                @endforeach
+                <a href="{{ $sales->nextPageUrl() ?? '#' }}"
+                   @if(!$sales->hasMorePages()) aria-disabled="true" tabindex="-1" @endif
+                   class="w-8 h-8 flex items-center justify-center rounded-xl border border-gray-200 transition-colors {{ !$sales->hasMorePages() ? 'text-gray-300 pointer-events-none' : 'text-gray-500 hover:bg-gray-100' }}"
+                   aria-label="Next page">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+                </a>
+            </nav>
+        @endif
     </div>
 </div>
 

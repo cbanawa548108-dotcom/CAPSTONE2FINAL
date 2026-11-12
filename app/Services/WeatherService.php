@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\WeatherData;
 use Carbon\Carbon;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
@@ -255,11 +256,21 @@ class WeatherService
 
     private function request(string $path, array $params = [])
     {
-        return Http::timeout(20)->get(self::BASE_URL . $path, array_merge([
-            'lat' => $this->lat,
-            'lon' => $this->lon,
-            'appid' => $this->apiKey,
-            'units' => 'metric',
-        ], $params));
+        try {
+            return Http::withOptions([
+                'verify' => config('services.openweather.ca_bundle') ?: true,
+            ])->timeout(20)->get(self::BASE_URL . $path, array_merge([
+                'lat' => $this->lat,
+                'lon' => $this->lon,
+                'appid' => $this->apiKey,
+                'units' => 'metric',
+            ], $params));
+        } catch (ConnectionException $e) {
+            throw new RuntimeException(
+                'OpenWeather connection failed; check network connectivity and the configured CA bundle.',
+                0,
+                $e,
+            );
+        }
     }
 }

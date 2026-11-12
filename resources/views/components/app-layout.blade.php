@@ -1,10 +1,11 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en" x-data="appState(@js($appearance['dark'] ?? false))" :class="darkMode ? 'dark' : ''" class="h-full {{ ($appearance['dark'] ?? false) ? 'dark' : '' }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{{ $title ?? 'FreshTrack — Fruit Inventory System' }}</title>
+    <link rel="icon" type="image/svg+xml" href="{{ asset('images/freshtrack-logo.svg') }}">
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -48,7 +49,16 @@
 
         html { scroll-behavior: smooth; }
 
+        html, body {
+            min-height: 100%;
+            height: auto;
+            margin: 0;
+        }
+
         body {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
             font-family: 'Inter', sans-serif;
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
@@ -243,19 +253,19 @@
     </style>
 </head>
 <body x-cloak>
-<div class="flex h-screen overflow-hidden bg-[#F5F3FF]">
+<div class="flex min-h-screen w-full bg-[#F5F3FF]">
 
     {{-- ╔══════════ SIDEBAR ══════════╗ --}}
     @include('partials.sidebar')
 
     {{-- ╔══════════ MAIN AREA ══════════╗ --}}
-    <div class="flex flex-col flex-1 overflow-hidden min-w-0">
+    <div class="flex flex-1 flex-col min-w-0">
 
         {{-- TOP NAV --}}
         @include('partials.navbar')
 
         {{-- PAGE CONTENT --}}
-        <main class="flex-1 overflow-y-auto bg-[#F5F3FF] p-6">
+        <main class="flex-1 overflow-visible bg-[#F5F3FF] p-6">
             @include('partials.breadcrumb')
             <div class="page-enter">
                 {{ $slot }}

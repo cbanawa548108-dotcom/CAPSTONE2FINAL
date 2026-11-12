@@ -125,25 +125,49 @@ $init = [
                     <button @click="setAppearance({ dark_mode: !darkMode })" :class="darkMode ? 'g-violet' : 'bg-gray-300'" class="relative w-12 h-6 rounded-full transition-all duration-200 shadow-inner"><span :style="{ transform: darkMode ? 'translateX(24px)' : 'translateX(0)' }" style="left:4px" class="absolute top-1 w-4 h-4 bg-white rounded-full shadow-md transition-transform duration-200"></span></button>
                 </div>
                 <div>
-                    <p class="text-[13px] font-bold text-gray-700 mb-3">Color Theme</p>
+                    <div class="flex items-center justify-between gap-3 mb-3">
+                        <div>
+                            <p class="text-[13px] font-bold text-gray-700">Color Theme</p>
+                            <p class="text-[11.5px] text-gray-400 mt-0.5">Choose an accent color for buttons, highlights, and charts.</p>
+                        </div>
+                        <span class="badge badge-violet text-[10px]" x-text="(themes[colorTheme]?.label || 'Violet') + ' selected'"></span>
+                    </div>
                     <div class="grid grid-cols-5 gap-3">
                         @foreach($themes as $key => $t)
-                        <button @click="setAppearance({ color_theme: '{{ $key }}' })" class="flex flex-col items-center gap-2 group">
-                            <div style="background: {{ $t['swatch'] }} !important" :style="colorTheme === '{{ $key }}' ? 'box-shadow: 0 0 0 2px #fff, 0 0 0 4px {{ $t['swatch'] }}' : ''" class="w-12 h-12 rounded-2xl shadow-md group-hover:scale-110 transition-transform"></div>
-                            <span class="text-[11.5px] text-gray-500 font-medium">{{ $t['label'] }}</span>
+                        <button type="button"
+                                @click="setAppearance({ color_theme: '{{ $key }}' })"
+                                :aria-pressed="colorTheme === '{{ $key }}'"
+                                aria-label="Select {{ $t['label'] }} color theme"
+                                :class="colorTheme === '{{ $key }}' ? 'border-violet-400 bg-violet-50 ring-2 ring-violet-200' : 'border-gray-200 bg-white hover:border-violet-200 hover:bg-violet-50/50'"
+                                class="group relative flex min-h-[92px] flex-col items-center justify-center gap-2 rounded-2xl border p-3 transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500">
+                            <span class="h-9 w-9 rounded-xl shadow-sm ring-1 ring-black/5 transition-transform group-hover:scale-105"
+                                  style="background-color: {{ $t['swatch'] }}"></span>
+                            <span :class="colorTheme === '{{ $key }}' ? 'text-violet-700' : 'text-gray-600'"
+                                  class="text-[11.5px] font-semibold">{{ $t['label'] }}</span>
+                            <svg x-show="colorTheme === '{{ $key }}'" x-cloak class="absolute right-2 top-2 h-4 w-4 text-violet-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+                            </svg>
                         </button>
                         @endforeach
                     </div>
                 </div>
                 <div>
-                    <p class="text-[13px] font-bold text-gray-700 mb-3">Font Size</p>
+                    <div class="flex items-center justify-between gap-3 mb-3">
+                        <div>
+                            <p class="text-[13px] font-bold text-gray-700">Font Size</p>
+                            <p class="text-[11.5px] text-gray-400 mt-0.5">Adjust the scale of page content.</p>
+                        </div>
+                    </div>
                     <div class="flex gap-3">
                         @foreach(['small' => 'Small', 'medium' => 'Medium', 'large' => 'Large'] as $key => $label)
-                        <button @click="setAppearance({ font_size: '{{ $key }}' })" :class="fontSize === '{{ $key }}' ? 'g-violet text-white border-transparent shadow-md' : 'border-gray-200 text-gray-600 hover:bg-[#F5F3FF] hover:border-violet-200'" class="flex-1 py-2.5 rounded-xl border text-[13px] font-semibold transition-all">{{ $label }}</button>
+                        <button type="button" @click="setAppearance({ font_size: '{{ $key }}' })"
+                                :aria-pressed="fontSize === '{{ $key }}'"
+                                :class="fontSize === '{{ $key }}' ? 'g-violet text-white border-transparent shadow-md' : 'border-gray-200 text-gray-600 hover:bg-[#F5F3FF] hover:border-violet-200'"
+                                class="flex-1 py-2.5 rounded-xl border text-[13px] font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500">{{ $label }}</button>
                         @endforeach
                     </div>
                 </div>
-                <p x-show="appearanceMsg" x-text="appearanceMsg" :class="appearanceOk ? 'text-green-600' : 'text-red-500'" class="text-[12.5px] font-semibold"></p>
+                <p x-show="appearanceMsg" role="status" aria-live="polite" x-text="appearanceMsg" :class="appearanceOk ? 'text-green-600' : 'text-red-500'" class="text-[12.5px] font-semibold"></p>
             </div>
         </div>
 
@@ -284,6 +308,7 @@ function settingsPage(init) {
 
     return {
         tab: 'profile',
+        themes: init.themes,
         darkMode: init.appearance.dark,
         colorTheme: init.appearance.theme,
         fontSize: init.appearance.font,

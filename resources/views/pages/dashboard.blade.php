@@ -71,6 +71,33 @@
     </div>
 </div>
 
+{{-- QUICK ACTIONS BELOW GREETING --}}
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-7 fade-up">
+    @php
+    $quickActions = [
+        ['Add Sale', 'pos', 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z', 'g-violet'],
+        ['Update Inventory', 'inventory', 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4', 'g-violet'],
+        ['Generate Report', 'reports', 'M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', 'g-violet'],
+        ['View Analytics', 'analytics', 'M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z', 'g-violet'],
+    ];
+    @endphp
+    @foreach($quickActions as [$label, $route, $icon, $gradient])
+    <a href="{{ route($route) }}" class="card p-5 hover:shadow-xl transition-all group">
+        <div class="flex items-center gap-3">
+            <div class="w-12 h-12 {{ $gradient }} rounded-2xl flex items-center justify-center shadow-md group-hover:scale-110 transition-transform">
+                <svg class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="{{ $icon }}"/>
+                </svg>
+            </div>
+            <div class="flex-1 min-w-0">
+                <p class="text-[13.5px] font-bold text-gray-900">{{ $label }}</p>
+                <p class="text-[11px] text-gray-400">Quick access</p>
+            </div>
+        </div>
+    </a>
+    @endforeach
+</div>
+
 {{-- KPI CARDS ROW 1 — with sparklines --}}
 <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
 @php
@@ -650,6 +677,7 @@ $kpis2 = [
 </div>
 
 {{-- QUICK ACTIONS --}}
+@if(false)
 <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-7 fade-up">
     @php
     $quickActions = [
@@ -675,7 +703,7 @@ $kpis2 = [
     </a>
     @endforeach
 </div>
-
+@endif
 @push('scripts')
 <script>
 // Live weather (OpenWeather via /api/weather)

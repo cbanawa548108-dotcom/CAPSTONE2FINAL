@@ -100,6 +100,8 @@ Route::middleware(['auth'])->group(function () {
 
 // API Routes (AJAX endpoints for all modules)
 Route::prefix('api')->middleware(['auth'])->group(function () {
+
+    Route::get('/search', [\App\Http\Controllers\SearchController::class, '__invoke'])->name('api.search');
     
     // Owner + Manager routes
     Route::middleware(['role:owner,manager'])->group(function () {

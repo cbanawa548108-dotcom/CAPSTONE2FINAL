@@ -34,6 +34,7 @@ return [
         'lat' => env('OPENWEATHER_LAT', 7.0731),
         'lon' => env('OPENWEATHER_LON', 125.6128),
         'timezone' => env('OPENWEATHER_TIMEZONE', 'Asia/Manila'),
+        'ca_bundle' => env('OPENWEATHER_CA_BUNDLE', ini_get('curl.cainfo') ?: null),
         // Past weather for training: OpenWeather One Call 3.0 "day_summary" needs a
         // One Call subscription. When it is unavailable, fall back to the free
         // Open-Meteo archive (set to "none" to disable the fallback).

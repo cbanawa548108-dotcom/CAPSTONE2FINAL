@@ -1,4 +1,4 @@
-﻿<x-app-layout>
+<x-app-layout>
 <x-slot name="title">AI Sales Forecast — FreshTrack</x-slot>
 
 <div x-data="forecastPage()" x-init="load()">

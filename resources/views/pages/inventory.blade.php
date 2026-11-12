@@ -13,6 +13,14 @@ function inventoryData() {
     selected:null,
     sidebarOpen: true,
     activeSection: 'overview',
+    productSearchQuery: '',
+    productCategoryFilter: '',
+    productStatusFilter: '',
+    historyFiltersOpen: false,
+    historySearch: '',
+    historyTypeFilter: '',
+    historyDateFrom: '',
+    historyDateTo: '',
     stockInStep: 1,
     stockInItems: [],
     itemsPerPage: 5,
@@ -27,6 +35,7 @@ function inventoryData() {
     stockOutSearchQuery: '',
     stockOutFilterCategory: '',
     selectedBatch: null,
+    stockOutMode: null,
     stockOutQuantity: 0,
     
     // Stock Adjustment data
@@ -72,6 +81,87 @@ function inventoryData() {
         'Lanzones': 10,
         'Banana': 7,
         'Pineapple': 14
+    },
+
+    matchesProduct(name, category, stock, reorderLevel) {
+        const query = this.productSearchQuery.trim().toLowerCase();
+        const status = stock <= 0 ? 'out' : (stock <= reorderLevel ? 'low' : 'available');
+        const productName = String(name || '').toLowerCase();
+        const productCategory = String(category || '').toLowerCase();
+
+        return (!query || productName.includes(query) || productCategory.includes(query))
+            && (!this.productCategoryFilter || category === this.productCategoryFilter)
+            && (!this.productStatusFilter || status === this.productStatusFilter);
+    },
+
+    hasMatchingProductRows(element) {
+        return Array.from(element.querySelectorAll('[data-product-row]')).some(row =>
+            this.matchesProduct(
+                row.dataset.productName,
+                row.dataset.productCategory,
+                Number(row.dataset.stock),
+                Number(row.dataset.reorderLevel)
+            )
+        );
+    },
+
+    matchesHistory(type, item, reference, details, date) {
+        const query = this.historySearch.trim().toLowerCase();
+        const searchable = [type, item, reference, details].join(' ').toLowerCase();
+
+        return (!query || searchable.includes(query))
+            && (!this.historyTypeFilter || type === this.historyTypeFilter)
+            && (!this.historyDateFrom || date >= this.historyDateFrom)
+            && (!this.historyDateTo || date <= this.historyDateTo);
+    },
+
+    clearHistoryFilters() {
+        this.historySearch = '';
+        this.historyTypeFilter = '';
+        this.historyDateFrom = '';
+        this.historyDateTo = '';
+    },
+
+    exportInventoryHistory(element) {
+        const rows = Array.from(element.querySelectorAll('[data-history-row]'))
+            .filter(row => this.matchesHistory(
+                row.dataset.type,
+                row.dataset.item,
+                row.dataset.reference,
+                row.dataset.details,
+                row.dataset.date
+            ));
+
+        if (!rows.length) {
+            alert('There are no inventory history records to export for these filters.');
+            return;
+        }
+
+        const escapeCsv = value => {
+            let text = String(value ?? '');
+            if (/^[=+\-@]/.test(text)) text = "'" + text;
+            return '"' + text.replace(/"/g, '""') + '"';
+        };
+        const csvRows = [
+            ['Type', 'Product', 'Batch / Reference', 'Quantity', 'Details', 'Date'],
+            ...rows.map(row => [
+                row.dataset.type,
+                row.dataset.item,
+                row.dataset.reference,
+                row.dataset.quantity,
+                row.dataset.details,
+                row.dataset.date
+            ])
+        ];
+        const csv = '\uFEFF' + csvRows.map(row => row.map(escapeCsv).join(',')).join('\r\n');
+        const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `inventory-history-${new Date().toISOString().slice(0, 10)}.csv`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     },
     
     generateSKUCode(productName) {
@@ -198,11 +288,12 @@ function inventoryData() {
                 @foreach($item->batches as $batch)
                     @if($batch->status === 'available' && $batch->quantity > 0)
                         stock.push({
-                            product: '{{ $item->name }}',
+                            product: @js($item->name),
                             batchId: {{ $batch->id }},
-                            batchCode: '{{ $batch->batch_code }}',
+                            batchCode: @js($batch->batch_code),
                             quantity: {{ $batch->quantity }},
-                            category: '{{ $item->category }}',
+                            unit: @js($item->unit),
+                            category: @js($item->category),
                             freshness: {{ $batch->remaining_shelf_life ?? 0 }}
                         });
                     @endif
@@ -220,7 +311,7 @@ function inventoryData() {
             const query = this.stockOutSearchQuery.toLowerCase();
             filtered = filtered.filter(item => 
                 item.product.toLowerCase().includes(query) ||
-                item.batchId.toLowerCase().includes(query)
+                item.batchCode.toLowerCase().includes(query)
             );
         }
         
@@ -254,30 +345,70 @@ function inventoryData() {
     
     selectBatchForStockOut(batch) {
         this.selectedBatch = batch;
+        this.stockOutMode = null;
+        this.stockOutQuantity = 0;
+    },
+
+    selectAnotherStockOutBatch() {
+        this.selectedBatch = null;
+        this.stockOutMode = null;
+        this.stockOutQuantity = 0;
+        document.getElementById('stock-out-available-batches')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    },
+
+    get selectedBatchRemainingQuantity() {
+        if (!this.selectedBatch) return 0;
+        const alreadySelected = this.stockOutItems.find(item => item.batchId === this.selectedBatch.batchId);
+        return Math.max(0, this.selectedBatch.quantity - (alreadySelected ? alreadySelected.quantity : 0));
+    },
+
+    addWholeSelectedBatch() {
+        if (!this.selectedBatch || this.selectedBatchRemainingQuantity <= 0) return;
+
+        const existingIndex = this.stockOutItems.findIndex(item => item.batchId === this.selectedBatch.batchId);
+        const batchItem = {
+            product: this.selectedBatch.product,
+            batchId: this.selectedBatch.batchId,
+            batchCode: this.selectedBatch.batchCode,
+            quantity: this.selectedBatch.quantity,
+            availableQty: this.selectedBatch.quantity,
+            unit: this.selectedBatch.unit
+        };
+
+        if (existingIndex >= 0) {
+            this.stockOutItems[existingIndex] = batchItem;
+        } else {
+            this.stockOutItems.push(batchItem);
+        }
+
+        this.selectedBatch = null;
+        this.stockOutMode = null;
         this.stockOutQuantity = 0;
     },
     
     addSelectedBatch() {
-        if (this.selectedBatch && this.stockOutQuantity > 0 && this.stockOutQuantity <= this.selectedBatch.quantity) {
+        const quantity = parseFloat(this.stockOutQuantity);
+        if (this.selectedBatch && this.stockOutMode === 'partial' && quantity > 0 && quantity <= this.selectedBatchRemainingQuantity) {
             // Check if batch already added
             const existingIndex = this.stockOutItems.findIndex(item => item.batchId === this.selectedBatch.batchId);
             
             if (existingIndex >= 0) {
-                // Update existing quantity
-                this.stockOutItems[existingIndex].quantity = parseFloat(this.stockOutQuantity);
+                this.stockOutItems[existingIndex].quantity += quantity;
             } else {
                 // Add new item
                 this.stockOutItems.push({
                     product: this.selectedBatch.product,
                     batchId: this.selectedBatch.batchId,
                     batchCode: this.selectedBatch.batchCode,
-                    quantity: parseFloat(this.stockOutQuantity),
-                    availableQty: this.selectedBatch.quantity
+                    quantity: quantity,
+                    availableQty: this.selectedBatch.quantity,
+                    unit: this.selectedBatch.unit
                 });
             }
             
             // Reset selection
             this.selectedBatch = null;
+            this.stockOutMode = null;
             this.stockOutQuantity = 0;
             this.stockOutSearchQuery = '';
         }
@@ -354,6 +485,7 @@ function inventoryData() {
         this.stockOutSearchQuery = '';
         this.stockOutFilterCategory = '';
         this.selectedBatch = null;
+        this.stockOutMode = null;
         this.stockOutQuantity = 0;
     },
     
@@ -720,7 +852,7 @@ function inventoryData() {
         <div class="p-4 border-t border-gray-200" x-show="sidebarOpen" x-transition>
             <div class="bg-violet-50 rounded-xl p-3">
                 <p class="text-xs font-bold text-violet-900">Quick Stats</p>
-                <p class="text-lg font-black text-violet-700 mt-1">1,240 kg</p>
+                <p class="text-lg font-black text-violet-700 mt-1">{{ number_format(isset($inventoryItems) ? $inventoryItems->sum('stock_quantity') : 0, 0) }} kg</p>
                 <p class="text-xs text-violet-600">Total Stock</p>
             </div>
         </div>
@@ -753,11 +885,21 @@ function inventoryData() {
 {{-- Summary --}}
 <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 fade-up delay-1">
 @php
+$totalInventoryStock = isset($inventoryItems) ? $inventoryItems->sum('stock_quantity') : 0;
+$availableInventoryStock = isset($inventoryItems)
+    ? $inventoryItems->sum(fn ($item) => $item->batches->where('status', 'available')->where('quantity', '>', 0)->sum('quantity'))
+    : 0;
+$criticalInventoryItems = isset($inventoryItems)
+    ? $inventoryItems->filter(fn ($item) => $item->stock_quantity > 0 && $item->stock_quantity <= $item->reorder_level)->count()
+    : 0;
+$outOfStockInventoryItems = isset($inventoryItems)
+    ? $inventoryItems->filter(fn ($item) => $item->stock_quantity <= 0)->count()
+    : 0;
 $summaryCards = [
-    ['Total Stock',   '1,240 kg', 'g-violet', 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4',                                   'All batches'],
-    ['Available',     '1,102 kg', 'g-green',  'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z',                                                       'Ready to sell'],
-    ['Critical Items','3 items',  'g-rose',   'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z','Needs restock'],
-    ['Out of Stock',  '1 item',   'g-amber',  'M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636',       'Depleted'],
+    ['Total Stock',   number_format($totalInventoryStock, 0) . ' kg', 'g-violet', 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4', 'All current stock'],
+    ['Available',     number_format($availableInventoryStock, 0) . ' kg', 'g-green', 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z', 'Ready to sell'],
+    ['Critical Items', $criticalInventoryItems . ($criticalInventoryItems === 1 ? ' item' : ' items'), 'g-rose', 'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z', 'At or below reorder level'],
+    ['Out of Stock', $outOfStockInventoryItems . ($outOfStockInventoryItems === 1 ? ' item' : ' items'), 'g-amber', 'M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636', 'Depleted'],
 ];
 @endphp
 @foreach($summaryCards as [$l,$v,$g,$iconPath,$s])
@@ -949,92 +1091,133 @@ $fruitIconPath = 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 
 
 {{-- Products Section --}}
 <div x-show="activeSection === 'products'" x-transition x-cloak>
-    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-7 fade-up">
-        <div>
-            <h1 class="text-[26px] font-black text-gray-900">Products Catalog</h1>
-            <p class="text-[13.5px] text-gray-500 mt-0.5">Manage all product types and their details</p>
+    <div class="relative mb-6 overflow-hidden rounded-3xl border border-violet-100 bg-gradient-to-br from-white via-white to-violet-50 p-6 shadow-sm fade-up">
+        <div class="pointer-events-none absolute -right-10 -top-16 h-48 w-48 rounded-full bg-violet-100/70 blur-3xl"></div>
+        <div class="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+            <div class="flex items-center gap-4">
+                <div class="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-2xl bg-violet-100 text-violet-700 shadow-sm ring-1 ring-violet-200">
+                    <svg class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+                    </svg>
+                </div>
+                <div>
+                    <p class="mb-1 text-[10px] font-bold uppercase tracking-[0.18em] text-violet-600">Inventory management</p>
+                    <h1 class="text-[26px] font-black leading-tight text-gray-900">Products Catalog</h1>
+                    <p class="mt-1 text-[13px] text-gray-500">Manage product details, pricing, and stock health in one place.</p>
+                </div>
+            </div>
+            <button @click="addProductModal=true" class="btn btn-violet btn-md text-[13px] shadow-lg shadow-violet-200/70">
+                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+                Add Product
+            </button>
         </div>
-        <button @click="addProductModal=true" class="btn btn-violet btn-md text-[13px]">
-            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
-            Add Product
-        </button>
     </div>
     
     {{-- Summary Cards --}}
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6 fade-up delay-1">
         @php
+        $totalProductCount = $inventoryItems->count();
+        $activeProductCount = $inventoryItems->filter(fn ($item) => $item->stock_quantity > 0)->count();
+        $lowStockCount = $inventoryItems->filter(fn ($item) => $item->stock_quantity > 0 && $item->stock_quantity <= $item->reorder_level)->count();
+        $outOfStockCount = $inventoryItems->filter(fn ($item) => $item->stock_quantity <= 0)->count();
         $productSummary = [
-            ['Total Products', '7 items', 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4', 'All types'],
-            ['Active Products', '6 items', 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z', 'In stock'],
-            ['Low Stock', '2 items', 'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z', 'Needs restock'],
+            ['Total Products', $totalProductCount, 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4', 'All types'],
+            ['In Stock', $activeProductCount, 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z', 'Currently available'],
+            ['Low Stock', $lowStockCount, 'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z', 'Needs restock'],
             ['Out of Stock', '0 items', 'M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636', 'Depleted'],
         ];
         @endphp
         @foreach($productSummary as $card)
-        <div class="card shimmer card-lift p-5">
-            <div class="icon-ring mb-3">
-                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="{{ $card[2] }}"/>
-                </svg>
+        <div class="card card-lift relative overflow-hidden p-5">
+            <div class="absolute inset-x-0 top-0 h-1 {{ $loop->first ? 'bg-violet-500' : ($loop->iteration === 2 ? 'bg-green-500' : ($loop->iteration === 3 ? 'bg-amber-400' : 'bg-red-400')) }}"></div>
+            <div class="flex items-start justify-between gap-3">
+                <div>
+                    <p class="text-[12px] font-semibold text-gray-500">{{ $card[0] }}</p>
+                    <p class="mt-2 text-[28px] font-black leading-none text-gray-900">{{ $card[0] === 'Out of Stock' ? $outOfStockCount : $card[1] }}</p>
+                    <p class="mt-2 text-[11px] text-gray-400">{{ $card[3] }}</p>
+                </div>
+                <div class="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl {{ $loop->first ? 'bg-violet-100 text-violet-600' : ($loop->iteration === 2 ? 'bg-green-100 text-green-600' : ($loop->iteration === 3 ? 'bg-amber-100 text-amber-600' : 'bg-red-100 text-red-600')) }}">
+                    <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="{{ $card[2] }}"/>
+                    </svg>
+                </div>
             </div>
-            <p class="text-[22px] font-black text-gray-900">{{ $card[1] }}</p>
-            <p class="text-[12.5px] font-semibold text-gray-600">{{ $card[0] }}</p>
-            <p class="text-[11.5px] text-gray-400 mt-0.5">{{ $card[3] }}</p>
         </div>
         @endforeach
     </div>
 
     {{-- Search and Filters --}}
-    <div class="card p-4 mb-5 fade-up delay-2">
-        <div class="flex flex-wrap gap-3">
+    <div class="card mb-5 border border-gray-100 p-4 shadow-sm fade-up delay-2">
+        <div class="flex flex-col gap-4 lg:flex-row lg:items-center">
             {{-- Search Bar --}}
-            <div class="flex items-center gap-2.5 bg-gray-100 rounded-2xl px-4 py-2.5 flex-1 min-w-52 max-w-sm border-2 border-transparent focus-within:border-violet-400 focus-within:bg-white transition-all">
+            <label class="flex min-w-52 flex-1 items-center gap-2.5 rounded-2xl border-2 border-transparent bg-gray-50 px-4 py-3 transition-all focus-within:border-violet-400 focus-within:bg-white lg:max-w-md">
                 <svg class="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
                 </svg>
-                <input type="text" placeholder="Search products by name..." class="bg-transparent text-[13px] outline-none w-full placeholder-gray-400">
+                <input x-model.debounce.150ms="productSearchQuery" type="search" placeholder="Search by product or category..." aria-label="Search products" class="w-full bg-transparent text-[13px] outline-none placeholder-gray-400">
+            </label>
+
+            <div class="flex flex-wrap items-center gap-2.5">
+                <select x-model="productCategoryFilter" aria-label="Filter by category" class="inp" style="width:auto;padding:11px 14px;border-radius:12px">
+                    <option value="">All Categories</option>
+                    @foreach($inventoryItems->pluck('category')->filter()->unique()->sort() as $category)
+                        <option value="{{ $category }}">{{ $category }}</option>
+                    @endforeach
+                </select>
+                <select x-model="productStatusFilter" aria-label="Filter by stock status" class="inp" style="width:auto;padding:11px 14px;border-radius:12px">
+                    <option value="">All Stock Statuses</option>
+                    <option value="available">Available</option>
+                    <option value="low">Low Stock</option>
+                    <option value="out">Out of Stock</option>
+                </select>
+                <button x-show="productSearchQuery || productCategoryFilter || productStatusFilter"
+                        @click="productSearchQuery = ''; productCategoryFilter = ''; productStatusFilter = ''"
+                        x-cloak type="button" class="rounded-xl px-3 py-2.5 text-[12px] font-semibold text-violet-700 transition hover:bg-violet-50">
+                    Clear filters
+                </button>
             </div>
-            
-            {{-- Filter 1: Category --}}
-            <select class="inp" style="width:auto;padding:10px 14px;border-radius:12px">
-                <option>All Categories</option>
-                <option>Tropical Fruit</option>
-                <option>Citrus</option>
-                <option>Seasonal</option>
-            </select>
-            
-            {{-- Filter 2: Status --}}
-            <select class="inp" style="width:auto;padding:10px 14px;border-radius:12px">
-                <option>All Status</option>
-                <option>Available</option>
-                <option>Low Stock</option>
-                <option>Out of Stock</option>
-            </select>
+        </div>
+        <div class="mt-3 flex items-center justify-between border-t border-gray-100 pt-3">
+            <p class="text-[11px] text-gray-500">Use search and filters to quickly find a product.</p>
+            <span class="text-[11px] font-semibold text-gray-600">{{ $totalProductCount }} products</span>
         </div>
     </div>
 
     {{-- Products Table --}}
-    <div class="card p-6 fade-up delay-3">
+    <div class="card overflow-hidden p-0 fade-up delay-3">
+        <div class="flex flex-col gap-1 border-b border-gray-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+            <div>
+                <h2 class="text-sm font-bold text-gray-900">All Products</h2>
+                <p class="mt-0.5 text-[11px] text-gray-500">Product details and current stock levels</p>
+            </div>
+            <span class="w-fit rounded-full bg-gray-100 px-3 py-1 text-[11px] font-bold text-gray-600">{{ $totalProductCount }} total</span>
+        </div>
         <div class="overflow-x-auto">
             <table class="w-full">
                 <thead>
-                    <tr class="border-b border-gray-200">
-                        <th class="text-left py-3 px-4 text-xs font-bold text-gray-600 uppercase">Product Name</th>
-                        <th class="text-left py-3 px-4 text-xs font-bold text-gray-600 uppercase">Category</th>
-                        <th class="text-left py-3 px-4 text-xs font-bold text-gray-600 uppercase">Unit Price</th>
-                        <th class="text-left py-3 px-4 text-xs font-bold text-gray-600 uppercase">Total Stock</th>
-                        <th class="text-left py-3 px-4 text-xs font-bold text-gray-600 uppercase">Status</th>
-                        <th class="text-left py-3 px-4 text-xs font-bold text-gray-600 uppercase">Actions</th>
+                    <tr class="border-b border-gray-200 bg-gray-50/80">
+                        <th class="whitespace-nowrap px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-500">Product Name</th>
+                        <th class="whitespace-nowrap px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-500">Category</th>
+                        <th class="whitespace-nowrap px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-500">Unit Price</th>
+                        <th class="whitespace-nowrap px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-500">Total Stock</th>
+                        <th class="whitespace-nowrap px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-500">Status</th>
+                        <th class="whitespace-nowrap px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-500">Actions</th>
                     </tr>
                 </thead>
-                <tbody>
+                <tbody x-ref="productRows">
                     @if(isset($inventoryItems) && $inventoryItems->count() > 0)
                         @foreach($inventoryItems as $item)
-                        <tr class="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                        <tr data-product-row
+                            data-product-name="{{ $item->name }}"
+                            data-product-category="{{ $item->category ?? '' }}"
+                            data-stock="{{ $item->stock_quantity }}"
+                            data-reorder-level="{{ $item->reorder_level }}"
+                            x-show="matchesProduct($el.dataset.productName, $el.dataset.productCategory, Number($el.dataset.stock), Number($el.dataset.reorderLevel))"
+                            class="border-b border-gray-100 transition-colors hover:bg-gray-50">
                             <td class="py-4 px-4">
                                 <div class="flex items-center gap-3">
-                                    <div class="w-10 h-10 bg-violet-100 rounded-lg flex items-center justify-center">
-                                        <svg class="w-5 h-5 text-violet-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <div class="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
+                                        <svg class="w-5 h-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                             <path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
                                         </svg>
                                     </div>
@@ -1080,6 +1263,20 @@ $fruitIconPath = 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 
                             </td>
                         </tr>
                         @endforeach
+                        <tr x-show="!hasMatchingProductRows($refs.productRows)" x-cloak>
+                            <td colspan="6" class="px-4 py-14 text-center">
+                                <div class="mx-auto flex max-w-sm flex-col items-center">
+                                    <div class="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-violet-50 text-violet-500">
+                                        <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                                        </svg>
+                                    </div>
+                                    <p class="text-sm font-bold text-gray-800">No matching products</p>
+                                    <p class="mt-1 text-xs text-gray-500">Try another search or clear the filters to see your full catalog.</p>
+                                    <button @click="productSearchQuery = ''; productCategoryFilter = ''; productStatusFilter = ''" type="button" class="mt-3 text-xs font-bold text-violet-700 hover:text-violet-900">Clear all filters</button>
+                                </div>
+                            </td>
+                        </tr>
                     @else
                         <tr>
                             <td colspan="6" class="py-12 text-center">
@@ -1101,58 +1298,86 @@ $fruitIconPath = 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 
 
 {{-- Stock In Section --}}
 <div x-show="activeSection === 'stock-in'" x-transition x-cloak>
-    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-7 fade-up">
-        <div>
-            <h1 class="text-[26px] font-black text-gray-900">Stock In Records</h1>
-            <p class="text-[13.5px] text-gray-500 mt-0.5">Track all incoming inventory and deliveries</p>
+    <div class="relative mb-6 overflow-hidden rounded-3xl border border-gray-100 bg-white p-6 shadow-sm fade-up">
+        <div class="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+            <div class="flex items-center gap-4">
+                <div class="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-2xl bg-gray-100 text-gray-600">
+                    <svg class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 16V4m0 0L7 9m5-5 5 5M5 14v4a2 2 0 002 2h10a2 2 0 002-2v-4"/>
+                    </svg>
+                </div>
+                <div>
+                    <p class="mb-1 text-[10px] font-bold uppercase tracking-[0.18em] text-gray-500">Receiving activity</p>
+                    <h1 class="text-[26px] font-black leading-tight text-gray-900">Stock In Records</h1>
+                    <p class="mt-1 text-[13px] text-gray-500">Review incoming batches, suppliers, quantities, and recorded costs.</p>
+                </div>
+            </div>
+            <button @click="stockInModal=true" class="btn btn-violet btn-md text-[13px] shadow-lg shadow-violet-200/70">
+                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+                Add Stock In
+            </button>
         </div>
-        <button @click="stockInModal=true" class="btn btn-violet btn-md text-[13px]">
-            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
-            Add Stock In
-        </button>
     </div>
 
-    <div class="card p-6">
-        <div class="space-y-4">
+    <div class="card overflow-hidden p-0 fade-up delay-1">
+        <div class="flex flex-col gap-1 border-b border-gray-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+            <div>
+                <h2 class="text-sm font-bold text-gray-900">Incoming batches</h2>
+                <p class="mt-0.5 text-[11px] text-gray-500">Most recently recorded stock receipts</p>
+            </div>
+            <span class="w-fit rounded-full bg-gray-100 px-3 py-1 text-[11px] font-bold text-gray-600">{{ isset($stockInRecords) ? count($stockInRecords) : 0 }} {{ isset($stockInRecords) && count($stockInRecords) === 1 ? 'record' : 'records' }}</span>
+        </div>
+        <div class="space-y-3 p-4 sm:p-5">
             @if(isset($stockInRecords) && count($stockInRecords) > 0)
             @foreach($stockInRecords as $stockIn)
-            <div class="flex items-center justify-between p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors border border-gray-100">
-                <div class="flex items-center gap-4 flex-1">
-                    <div class="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
-                        <svg class="w-6 h-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M7 16V4m0 0L3 8m4-4l4 4"/>
+            <div class="flex flex-col gap-4 rounded-2xl border border-gray-100 bg-gray-50/70 p-4 transition-colors hover:bg-gray-100/70 sm:flex-row sm:items-center sm:gap-5 sm:px-5">
+                <div class="flex min-w-0 flex-1 items-start gap-3 sm:items-center sm:gap-4">
+                    <div class="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-gray-100 text-gray-600">
+                        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 16V4m0 0L7 9m5-5 5 5"/>
                         </svg>
                     </div>
-                    <div class="flex-1">
-                        <div class="flex items-center gap-3">
-                            <p class="font-bold text-gray-900 text-sm">{{ $stockIn[1] }}</p>
-                            <span class="text-xs font-mono text-gray-500">{{ $stockIn[0] }}</span>
+                    <div class="min-w-0 flex-1">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <p class="text-sm font-bold text-gray-900">{{ $stockIn[1] }}</p>
+                            <span class="rounded-md bg-gray-100 px-2 py-1 font-mono text-[10px] font-semibold text-gray-600">{{ $stockIn[0] }}</span>
                         </div>
-                        <div class="flex items-center gap-4 mt-1">
-                            <p class="text-xs text-gray-500">Supplier: {{ $stockIn[3] }}</p>
-                            <p class="text-xs text-gray-500">Date: {{ $stockIn[4] }}</p>
+                        <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5">
+                            <p class="flex items-center gap-1.5 text-[11px] text-gray-500">
+                                <svg class="h-3.5 w-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2m12-13a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+                                <span>{{ $stockIn[3] }}</span>
+                            </p>
+                            <p class="flex items-center gap-1.5 text-[11px] text-gray-500">
+                                <svg class="h-3.5 w-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 5h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2z"/></svg>
+                                <span>{{ $stockIn[4] }}</span>
+                            </p>
                         </div>
                     </div>
-                    <div class="text-right">
-                        <p class="text-lg font-bold text-gray-900">{{ $stockIn[2] }}</p>
-                        <p class="text-sm font-semibold text-green-600">{{ $stockIn[5] }}</p>
+                </div>
+                <div class="flex items-center justify-between gap-4 border-t border-gray-100 pt-3 sm:justify-end sm:border-0 sm:pt-0">
+                    <div class="text-left sm:min-w-24 sm:text-right">
+                        <p class="text-base font-black leading-tight text-gray-900">{{ $stockIn[2] }}</p>
+                        <p class="mt-1 text-xs font-semibold text-gray-600">{{ $stockIn[5] }}</p>
                     </div>
-                    <div>
-                        <span class="badge badge-green text-xs">{{ $stockIn[6] }}</span>
+                    <div class="sm:min-w-20 sm:text-right">
+                        <span class="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-1 text-[10px] font-bold text-gray-600">
+                            <span class="h-1.5 w-1.5 rounded-full bg-gray-400"></span>
+                            {{ $stockIn[6] }}
+                        </span>
                     </div>
                 </div>
             </div>
             @endforeach
             @else
             {{-- Empty State --}}
-            <div class="text-center py-12">
-                <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <svg class="w-8 h-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+            <div class="py-12 text-center">
+                <div class="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gray-100 text-gray-500">
+                    <svg class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M7 16V4m0 0L3 8m4-4l4 4"/>
                     </svg>
                 </div>
-                <h3 class="text-lg font-bold text-gray-900 mb-2">No Stock In Records Yet</h3>
-                <p class="text-sm text-gray-500 mb-4">Start adding inventory to see stock in history</p>
+                <h3 class="mb-2 text-base font-bold text-gray-900">No stock receipts yet</h3>
+                <p class="mb-4 text-sm text-gray-500">Record an incoming batch to start tracking your receiving history.</p>
                 <button @click="stockInModal=true" class="btn btn-violet btn-sm mx-auto">
                     <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
@@ -1167,10 +1392,18 @@ $fruitIconPath = 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 
 
 {{-- Stock Out Section --}}
 <div x-show="activeSection === 'stock-out'" x-transition x-cloak>
-    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-7 fade-up">
-        <div>
-            <h1 class="text-[26px] font-black text-gray-900">Stock Out Records</h1>
-            <p class="text-[13.5px] text-gray-500 mt-0.5">Track all sales and outgoing inventory</p>
+    <div class="mb-6 flex flex-col gap-5 rounded-3xl border border-gray-100 bg-white p-6 shadow-sm fade-up sm:flex-row sm:items-center sm:justify-between">
+        <div class="flex items-center gap-4">
+            <div class="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-2xl bg-gray-100 text-gray-600">
+                <svg class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v12m0 0 5-5m-5 5-5-5M5 20h14"/>
+                </svg>
+            </div>
+            <div>
+                <p class="mb-1 text-[10px] font-bold uppercase tracking-[0.16em] text-gray-500">Inventory movement</p>
+                <h1 class="text-[26px] font-black leading-tight text-gray-900">Stock Out Records</h1>
+                <p class="mt-1 text-[13px] text-gray-500">A clear history of completed sales and outgoing stock.</p>
+            </div>
         </div>
         <button @click="stockOutModal=true; stockOutReference=generateStockOutReference()" class="btn btn-violet btn-md text-[13px]">
             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
@@ -1178,47 +1411,66 @@ $fruitIconPath = 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 
         </button>
     </div>
 
-    <div class="card p-6">
-        <div class="space-y-4">
+    <div class="card overflow-hidden p-0 fade-up delay-1">
+        <div class="flex flex-col gap-1 border-b border-gray-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+            <div>
+                <h2 class="text-sm font-bold text-gray-900">Recent transactions</h2>
+                <p class="mt-0.5 text-[11px] text-gray-500">Latest stock removals recorded in the system</p>
+            </div>
+            <span class="w-fit rounded-full bg-gray-100 px-3 py-1 text-[11px] font-bold text-gray-600">
+                {{ isset($stockOutRecords) ? count($stockOutRecords) : 0 }} {{ isset($stockOutRecords) && count($stockOutRecords) === 1 ? 'transaction' : 'transactions' }}
+            </span>
+        </div>
+        <div class="space-y-3 p-4 sm:p-5">
             @if(isset($stockOutRecords) && count($stockOutRecords) > 0)
             @foreach($stockOutRecords as $stockOut)
-            <div class="flex items-center justify-between p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors border border-gray-100">
-                <div class="flex items-center gap-4 flex-1">
-                    <div class="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center">
-                        <svg class="w-6 h-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M17 16v-4m0 4h4"/>
+            <div class="flex flex-col gap-4 rounded-2xl border border-gray-100 bg-white p-4 transition-colors hover:bg-gray-50 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+                <div class="flex min-w-0 flex-1 items-start gap-3 sm:items-center sm:gap-4">
+                    <div class="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-gray-50 text-gray-600">
+                        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v12m0 0 5-5m-5 5-5-5M5 20h14"/>
                         </svg>
                     </div>
-                    <div class="flex-1">
-                        <div class="flex items-center gap-3">
-                            <p class="font-bold text-gray-900 text-sm">{{ $stockOut[1] }}</p>
-                            <span class="text-xs font-mono text-gray-500">{{ $stockOut[0] }}</span>
+                    <div class="min-w-0 flex-1">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <p class="text-sm font-bold text-gray-900">{{ $stockOut[1] }}</p>
+                            <span class="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 font-mono text-[10px] font-semibold text-gray-600">{{ $stockOut[0] }}</span>
                         </div>
-                        <div class="flex items-center gap-4 mt-1">
-                            <p class="text-xs text-gray-500">Type: {{ $stockOut[3] }}</p>
-                            <p class="text-xs text-gray-500">Date: {{ $stockOut[4] }}</p>
+                        <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5">
+                            <p class="flex items-center gap-1.5 text-[11px] text-gray-500">
+                                <svg class="h-3.5 w-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+                                <span>{{ $stockOut[3] }}</span>
+                            </p>
+                            <p class="flex items-center gap-1.5 text-[11px] text-gray-500">
+                                <svg class="h-3.5 w-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 5h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2z"/></svg>
+                                <span>{{ $stockOut[4] }}</span>
+                            </p>
                         </div>
                     </div>
-                    <div class="text-right">
-                        <p class="text-lg font-bold text-gray-900">{{ $stockOut[2] }}</p>
-                        <p class="text-sm font-semibold text-violet-600">{{ $stockOut[5] }}</p>
+                </div>
+                <div class="flex items-center justify-between gap-4 border-t border-gray-100 pt-3 sm:justify-end sm:border-0 sm:pt-0">
+                    <div class="text-left sm:min-w-24 sm:text-right">
+                        <p class="text-base font-black leading-tight text-gray-900">{{ $stockOut[2] }}</p>
+                        <p class="mt-1 text-xs font-semibold text-gray-600">{{ $stockOut[5] }}</p>
                     </div>
-                    <div>
-                        <span class="badge badge-green text-xs">{{ $stockOut[6] }}</span>
+                    <div class="sm:min-w-20 sm:text-right">
+                        <span class="inline-flex items-center rounded-full border border-gray-200 bg-white px-2.5 py-1 text-[10px] font-bold text-gray-600">
+                            {{ $stockOut[6] }}
+                        </span>
                     </div>
                 </div>
             </div>
             @endforeach
             @else
             {{-- Empty State --}}
-            <div class="text-center py-12">
-                <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <svg class="w-8 h-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M17 16v-4m0 4h4"/>
+            <div class="py-12 text-center">
+                <div class="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gray-100 text-gray-500">
+                    <svg class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v12m0 0 5-5m-5 5-5-5M5 20h14"/>
                     </svg>
                 </div>
-                <h3 class="text-lg font-bold text-gray-900 mb-2">No Stock Out Records Yet</h3>
-                <p class="text-sm text-gray-500 mb-4">Record your first stock out to see history</p>
+                <h3 class="mb-2 text-base font-bold text-gray-900">No outgoing transactions yet</h3>
+                <p class="mb-4 text-sm text-gray-500">Completed stock removals will appear here with their quantities and references.</p>
                 <button @click="stockOutModal=true; stockOutReference=generateStockOutReference()" class="btn btn-violet btn-sm mx-auto">
                     <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
@@ -1301,65 +1553,106 @@ $fruitIconPath = 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 
             <p class="text-[13.5px] text-gray-500 mt-0.5">Complete audit trail of all inventory movements</p>
         </div>
         <div class="flex items-center gap-3">
-            <button class="btn btn-outline btn-md text-[13px]">
+            <button @click="historyFiltersOpen = !historyFiltersOpen" :aria-expanded="historyFiltersOpen.toString()" type="button" class="btn btn-outline btn-md text-[13px]">
                 <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"/></svg>
-                Filter
+                <span x-text="historyFiltersOpen ? 'Hide Filters' : 'Filter'"></span>
             </button>
-            <button class="btn btn-outline btn-md text-[13px]">
+            <button @click="exportInventoryHistory($refs.historyList)" type="button" class="btn btn-outline btn-md text-[13px]">
                 <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
-                Export
+                Export CSV
             </button>
         </div>
     </div>
 
-    <div class="card p-6">
-        <div class="space-y-3">
-            @foreach([
-                ['Stock In', 'Mango', 'MNG-001', '+285 kg', 'Davao Fresh Farms', 'Today, 2:30 PM', 'green'],
-                ['Sale', 'Mango', 'MNG-001', '-45 kg', 'POS Transaction #1245', 'Today, 2:30 PM', 'blue'],
-                ['Stock In', 'Banana', 'BNA-041', '+210 kg', 'Davao Fresh Farms', 'Today, 11:15 AM', 'green'],
-                ['Sale', 'Banana', 'BNA-041', '-78 kg', 'POS Transaction #1244', 'Today, 11:15 AM', 'blue'],
-                ['Adjustment', 'Mango', 'MNG-002', '+12 kg', 'Recount correction', 'Yesterday, 10:30 AM', 'amber'],
-                ['Stock Out', 'Pomelo', 'POM-034', '-15 kg', 'Spoilage removal', 'Yesterday, 10:00 AM', 'red'],
-                ['Sale', 'Durian', 'DUR-112', '-22 kg', 'POS Transaction #1243', 'Yesterday, 4:45 PM', 'blue'],
-                ['Stock In', 'Durian', 'DUR-112', '+145 kg', 'Mt. Apo Growers', 'Jun 19, 8:00 AM', 'green']
-            ] as $history)
-            <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors border border-gray-100">
-                <div class="flex items-center gap-3 flex-1">
-                    <div class="w-8 h-8 bg-{{ $history[6] }}-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                        @if($history[6] === 'green')
-                        <svg class="w-4 h-4 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M7 16V4m0 0L3 8m4-4l4 4"/>
+    <div x-show="historyFiltersOpen" x-cloak x-transition class="card mb-4 border border-gray-100 p-4">
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <label class="text-xs font-semibold text-gray-600">
+                Search history
+                <input x-model.debounce.150ms="historySearch" type="search" placeholder="Product, batch, reference..." class="inp mt-1.5 w-full">
+            </label>
+            <label class="text-xs font-semibold text-gray-600">
+                Movement type
+                <select x-model="historyTypeFilter" class="inp mt-1.5 w-full">
+                    <option value="">All movement types</option>
+                    <option value="Stock In">Stock In</option>
+                    <option value="Sale">Sale</option>
+                    <option value="Stock Out">Stock Out</option>
+                    <option value="Adjustment">Adjustment</option>
+                    <option value="Spoilage">Spoilage</option>
+                    <option value="Wastage">Wastage</option>
+                    <option value="Transfer">Transfer</option>
+                    <option value="Sample">Sample</option>
+                    <option value="Other">Other</option>
+                </select>
+            </label>
+            <label class="text-xs font-semibold text-gray-600">
+                From
+                <input x-model="historyDateFrom" type="date" class="inp mt-1.5 w-full">
+            </label>
+            <label class="text-xs font-semibold text-gray-600">
+                To
+                <input x-model="historyDateTo" type="date" class="inp mt-1.5 w-full">
+            </label>
+        </div>
+        <div class="mt-3 flex justify-end">
+            <button @click="clearHistoryFilters()" type="button" class="rounded-xl px-3 py-2 text-xs font-semibold text-gray-600 transition hover:bg-gray-100">Clear filters</button>
+        </div>
+    </div>
+
+    @php $historyRecordCount = isset($historyRecords) ? $historyRecords->count() : 0; @endphp
+    <div class="card overflow-hidden p-0">
+        <div class="flex items-center justify-between border-b border-gray-100 px-5 py-4">
+            <div>
+                <h2 class="text-sm font-bold text-gray-900">Movement log</h2>
+                <p class="mt-0.5 text-[11px] text-gray-500">Filter the records or export the matching results.</p>
+            </div>
+            <span class="rounded-full bg-gray-100 px-3 py-1 text-[11px] font-bold text-gray-600">{{ $historyRecordCount }} records</span>
+        </div>
+        <div x-ref="historyList" class="space-y-2 p-4 sm:p-5">
+            @forelse($historyRecords ?? [] as $history)
+            <div data-history-row
+                 data-type="{{ $history['type'] }}"
+                 data-item="{{ $history['item'] }}"
+                 data-reference="{{ $history['reference'] }}"
+                 data-quantity="{{ $history['quantity'] }}"
+                 data-details="{{ $history['details'] }}"
+                 data-date="{{ $history['date_filter'] }}"
+                 x-show="matchesHistory($el.dataset.type, $el.dataset.item, $el.dataset.reference, $el.dataset.details, $el.dataset.date)"
+                 class="flex flex-col gap-3 rounded-xl border border-gray-100 bg-gray-50/70 p-3 transition-colors hover:bg-gray-100/70 sm:flex-row sm:items-center">
+                <div class="flex min-w-0 flex-1 items-center gap-3">
+                    <div class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600">
+                        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v12m0 0 5-5m-5 5-5-5M5 20h14"/>
                         </svg>
-                        @elseif($history[6] === 'red')
-                        <svg class="w-4 h-4 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7"/>
-                        </svg>
-                        @elseif($history[6] === 'blue')
-                        <svg class="w-4 h-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/>
-                        </svg>
-                        @else
-                        <svg class="w-4 h-4 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4"/>
-                        </svg>
-                        @endif
                     </div>
-                    <div class="flex-1 min-w-0">
-                        <div class="flex items-center gap-2 flex-wrap">
-                            <span class="badge badge-{{ $history[6] }} text-xs">{{ $history[0] }}</span>
-                            <p class="font-bold text-gray-900 text-sm">{{ $history[1] }}</p>
-                            <span class="text-xs font-mono text-gray-400">{{ $history[2] }}</span>
+                    <div class="min-w-0 flex-1">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <span class="rounded-md border border-gray-200 bg-white px-2 py-0.5 text-[10px] font-bold text-gray-600">{{ $history['type'] }}</span>
+                            <p class="text-sm font-bold text-gray-900">{{ $history['item'] }}</p>
+                            <span class="rounded-md bg-gray-100 px-2 py-0.5 font-mono text-[10px] text-gray-500">{{ $history['reference'] }}</span>
                         </div>
-                        <p class="text-xs text-gray-500 mt-0.5">{{ $history[4] }}</p>
-                    </div>
-                    <div class="text-right flex-shrink-0">
-                        <p class="text-sm font-bold text-gray-900">{{ $history[3] }}</p>
-                        <p class="text-xs text-gray-400">{{ $history[5] }}</p>
+                        <p class="mt-1 text-xs text-gray-500">{{ $history['details'] }}</p>
                     </div>
                 </div>
+                <div class="flex items-center justify-between gap-4 border-t border-gray-200/70 pt-2 sm:justify-end sm:border-0 sm:pt-0">
+                    <p class="text-sm font-bold text-gray-900">{{ $history['quantity'] }}</p>
+                    <p class="min-w-32 text-right text-xs text-gray-500">{{ $history['date'] }}</p>
+                </div>
             </div>
-            @endforeach
+            @empty
+            <div class="py-12 text-center">
+                <p class="text-sm font-semibold text-gray-700">No inventory movements recorded yet.</p>
+                <p class="mt-1 text-xs text-gray-500">Stock receipts, sales, removals, and adjustments will appear here.</p>
+            </div>
+            @endforelse
+            @if($historyRecordCount > 0)
+            <div x-show="!Array.from($refs.historyList.querySelectorAll('[data-history-row]')).some(row => matchesHistory(row.dataset.type, row.dataset.item, row.dataset.reference, row.dataset.details, row.dataset.date))"
+                 x-cloak class="py-12 text-center">
+                <p class="text-sm font-semibold text-gray-700">No matching history records</p>
+                <p class="mt-1 text-xs text-gray-500">Adjust or clear the filters to see other inventory movements.</p>
+                <button @click="clearHistoryFilters()" type="button" class="mt-3 text-xs font-bold text-gray-700 hover:text-gray-900">Clear filters</button>
+            </div>
+            @endif
         </div>
     </div>
 </div>
@@ -2130,8 +2423,8 @@ $fruitIconPath = 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 
                                 <span class="font-black text-violet-900" x-text="stockOutItems.length"></span>
                             </div>
                             <div class="flex items-center justify-between text-xs">
-                                <span class="text-violet-900 font-semibold">Total:</span>
-                                <span class="font-black text-violet-900" x-text="stockOutItems.reduce((sum, item) => sum + parseFloat(item.quantity || 0), 0).toFixed(2) + ' kg'"></span>
+                                <span class="text-violet-900 font-semibold">Selected batches:</span>
+                                <span class="font-black text-violet-900" x-text="stockOutItems.length + ' batch(es)'"></span>
                             </div>
                         </div>
                     </div>
@@ -2141,7 +2434,7 @@ $fruitIconPath = 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 
                 <div class="lg:col-span-2 space-y-3">
                     
                     {{-- Search & Filter Section --}}
-                    <div class="bg-white rounded-xl border-2 border-gray-200 p-3">
+                    <div id="stock-out-available-batches" class="bg-white rounded-xl border-2 border-gray-200 p-3">
                         <h4 class="text-xs font-black text-gray-900 mb-2 flex items-center gap-1.5">
                             <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
@@ -2206,15 +2499,24 @@ $fruitIconPath = 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 
                                         <div class="flex-1 min-w-0">
                                             <div class="flex items-center gap-1.5 mb-0.5">
                                                 <p class="font-bold text-gray-900 text-xs truncate" x-text="batch.product"></p>
-                                                <span class="text-[10px] px-1.5 py-0.5 rounded font-mono bg-gray-100 text-gray-600" x-text="batch.batchCode"></span>
+                                                <span class="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-md font-mono font-bold bg-violet-100 text-violet-800 border border-violet-200">
+                                                    <span class="font-sans uppercase tracking-wide text-[8px] text-violet-500">Batch</span>
+                                                    <span x-text="batch.batchCode"></span>
+                                                </span>
                                             </div>
                                             <div class="flex items-center gap-2 text-[10px] text-gray-500">
-                                                <span>Avail: <strong x-text="batch.quantity + ' kg'"></strong></span>
+                                                <span>Available: <strong x-text="batch.quantity + ' ' + batch.unit"></strong></span>
                                                 <span class="px-1.5 py-0.5 rounded" 
                                                       :class="batch.freshness > 14 ? 'bg-green-100 text-green-700' : (batch.freshness > 7 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700')"
                                                       x-text="batch.freshness + 'd'"></span>
                                             </div>
                                         </div>
+                                        <button type="button"
+                                                @click.stop="selectBatchForStockOut(batch)"
+                                                :class="selectedBatch?.batchId === batch.batchId ? 'bg-violet-600 text-white' : 'bg-violet-100 text-violet-700 hover:bg-violet-200'"
+                                                class="flex-shrink-0 rounded-lg px-2.5 py-1.5 text-[10px] font-bold transition-colors">
+                                            <span x-text="selectedBatch?.batchId === batch.batchId ? 'Selected' : 'Select batch'"></span>
+                                        </button>
                                         <div x-show="selectedBatch?.batchId === batch.batchId" class="flex-shrink-0">
                                             <svg class="w-4 h-4 text-violet-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
                                                 <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
@@ -2228,30 +2530,51 @@ $fruitIconPath = 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 
                     
                     {{-- Add Quantity Section --}}
                     <div x-show="selectedBatch" x-transition class="bg-gradient-to-br from-violet-50 to-purple-50 rounded-xl border-2 border-violet-300 p-3">
-                        <h4 class="text-xs font-black text-violet-900 mb-2">Enter Quantity</h4>
-                        <div class="flex items-end gap-2">
+                        <h4 class="text-xs font-black text-violet-900 mb-2">
+                            Stock out from <span x-text="selectedBatch?.product"></span>
+                            <span class="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-md font-mono font-bold bg-violet-100 text-violet-800 border border-violet-200">
+                                <span class="font-sans uppercase tracking-wide text-[8px] text-violet-500">Batch</span>
+                                <span x-text="selectedBatch?.batchCode"></span>
+                            </span>
+                        </h4>
+                        <p class="text-[11px] text-violet-700 mb-2">
+                            Choose whether to remove the entire batch or only part of it. Available:
+                            <strong x-text="selectedBatch?.quantity + ' ' + selectedBatch?.unit"></strong>
+                        </p>
+                        <div class="flex flex-wrap gap-2">
+                            <button type="button" @click="addWholeSelectedBatch()"
+                                    class="btn bg-violet-600 hover:bg-violet-700 text-white btn-sm text-xs px-3 py-2">
+                                Remove whole batch (<span x-text="selectedBatch?.quantity + ' ' + selectedBatch?.unit"></span>)
+                            </button>
+                            <button type="button" @click="stockOutMode = 'partial'; stockOutQuantity = 0"
+                                    :class="stockOutMode === 'partial' ? 'bg-violet-100 border-violet-400 text-violet-800' : 'bg-white border-violet-200 text-violet-700 hover:bg-violet-50'"
+                                    class="btn btn-sm border text-xs px-3 py-2">
+                                Remove part of batch
+                            </button>
+                        </div>
+                        <div x-show="stockOutMode === 'partial'" x-transition class="flex items-end gap-2 mt-3">
                             <div class="flex-1">
-                                <label class="text-[10px] font-bold text-violet-900 uppercase mb-1 block">Quantity (kg) *</label>
-                                <input type="number" 
+                                <label class="text-[10px] font-bold text-violet-900 uppercase mb-1 block">Quantity (<span x-text="selectedBatch?.unit"></span>) *</label>
+                                <input type="number"
                                        x-model="stockOutQuantity"
-                                       :max="selectedBatch?.quantity"
+                                       :max="selectedBatchRemainingQuantity"
                                        min="0.01"
                                        step="0.01"
-                                       placeholder="0.00"
+                                       placeholder="Enter amount to remove"
                                        class="inp bg-white text-sm font-bold py-1.5"
                                        @keydown.enter="addSelectedBatch()">
                                 <p class="text-[10px] text-violet-700 mt-0.5">
-                                    Max: <span class="font-bold" x-text="selectedBatch?.quantity + ' kg'"></span>
+                                    Maximum: <span class="font-bold" x-text="selectedBatchRemainingQuantity + ' ' + selectedBatch?.unit"></span>
                                 </p>
                             </div>
                             <button @click="addSelectedBatch()"
-                                    :disabled="!selectedBatch || stockOutQuantity <= 0 || stockOutQuantity > selectedBatch?.quantity"
-                                    :class="(!selectedBatch || stockOutQuantity <= 0 || stockOutQuantity > selectedBatch?.quantity) ? 'opacity-50 cursor-not-allowed' : ''"
+                                    :disabled="!selectedBatch || stockOutMode !== 'partial' || stockOutQuantity <= 0 || stockOutQuantity > selectedBatchRemainingQuantity"
+                                    :class="(!selectedBatch || stockOutMode !== 'partial' || stockOutQuantity <= 0 || stockOutQuantity > selectedBatchRemainingQuantity) ? 'opacity-50 cursor-not-allowed' : ''"
                                     class="btn bg-violet-600 hover:bg-violet-700 text-white btn-sm whitespace-nowrap text-xs px-3 py-1.5">
                                 <svg class="w-3.5 h-3.5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
                                     <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
                                 </svg>
-                                Add
+                                Add partial quantity
                             </button>
                         </div>
                     </div>
@@ -2259,12 +2582,18 @@ $fruitIconPath = 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 
                     {{-- Selected Items Table --}}
                     <div class="bg-white rounded-xl border-2 border-gray-200 overflow-hidden">
                         <div class="bg-gray-50 border-b border-gray-200 px-3 py-2">
-                            <h4 class="text-xs font-black text-gray-900 flex items-center gap-1.5">
-                                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
-                                </svg>
-                                Items to Remove (<span x-text="stockOutItems.length"></span>)
-                            </h4>
+                            <div class="flex items-center justify-between gap-2">
+                                <h4 class="text-xs font-black text-gray-900 flex items-center gap-1.5">
+                                    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+                                    </svg>
+                                    Batches in this transaction (<span x-text="stockOutItems.length"></span>)
+                                </h4>
+                                <button x-show="stockOutItems.length > 0" type="button" @click="selectAnotherStockOutBatch()"
+                                        class="text-[10px] font-bold text-violet-700 hover:text-violet-900 whitespace-nowrap">
+                                    + Add another batch
+                                </button>
+                            </div>
                         </div>
                         
                         <div class="min-h-[120px] max-h-40 overflow-y-auto">
@@ -2274,7 +2603,7 @@ $fruitIconPath = 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 
                                         <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
                                     </svg>
                                     <p class="text-xs text-gray-500 font-medium">No items selected</p>
-                                    <p class="text-[10px] text-gray-400 mt-0.5">Select products above</p>
+                                    <p class="text-[10px] text-gray-400 mt-0.5">Select one or more batches above, choose full or partial quantity for each, then record them in one transaction.</p>
                                 </div>
                             </template>
                             
@@ -2290,13 +2619,14 @@ $fruitIconPath = 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 
                                                 </div>
                                                 <div class="flex-1 min-w-0">
                                                     <p class="font-bold text-gray-900 text-xs truncate" x-text="item.product"></p>
-                                                    <p class="text-[10px] text-gray-500">
-                                                        <span class="font-mono" x-text="item.batchCode || item.batchId"></span>
-                                                    </p>
+                                                    <span class="inline-flex items-center gap-1 mt-1 text-[10px] px-1.5 py-0.5 rounded-md font-mono font-bold bg-violet-100 text-violet-800 border border-violet-200">
+                                                        <span class="font-sans uppercase tracking-wide text-[8px] text-violet-500">Batch</span>
+                                                        <span x-text="item.batchCode || item.batchId"></span>
+                                                    </span>
                                                 </div>
                                             </div>
                                             <div class="flex items-center gap-2 flex-shrink-0">
-                                                <span class="text-sm font-black text-violet-600" x-text="item.quantity + ' kg'"></span>
+                                                <span class="text-sm font-black text-violet-600" x-text="item.quantity + ' ' + item.unit"></span>
                                                 <button @click="removeStockOutItem(index)" 
                                                         class="p-1 text-gray-400 hover:text-red-500 hover:bg-red-100 rounded transition-colors">
                                                     <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">

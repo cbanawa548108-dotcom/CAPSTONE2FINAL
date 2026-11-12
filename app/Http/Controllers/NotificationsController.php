@@ -236,7 +236,7 @@ class NotificationsController extends Controller
         $alerts = [];
 
         // Low stock
-        foreach (InventoryItem::lowStock()->get() as $item) {
+        foreach (InventoryItem::lowStock()->where('stock_quantity', '>', 0)->get() as $item) {
             $alerts[] = [
                 'dedupe_key' => 'low-stock-' . $item->id,
                 'module' => 'Inventory',

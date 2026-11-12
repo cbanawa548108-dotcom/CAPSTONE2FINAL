@@ -6,25 +6,32 @@ use App\Models\SalesTransaction;
 use App\Models\SalesItem;
 use App\Models\InventoryItem;
 use App\Models\InventoryBatch;
+use App\Models\OwnerSetting;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\ValidationException;
 use Carbon\Carbon;
 
 class SalesController extends Controller
 {
+    private const TAX_RATE = 0.12;
+
     /**
      * Display the sales page.
      */
     public function page()
     {
+        $timezone = OwnerSetting::forUser(Auth::id())->timezone ?: config('app.timezone');
+
         // Get sales transactions
-        $sales = SalesTransaction::with(['salesItems.inventoryBatch.inventoryItem', 'user'])
+        $sales = SalesTransaction::with(['salesItems.inventoryItem', 'salesItems.inventoryBatch.inventoryItem', 'user'])
             ->where('payment_method', '!=', 'adjustment') // Exclude adjustments
             ->where('type', 'sale') // Exclude spoilage/wastage write-offs
-            ->orderBy('created_at', 'desc')
-            ->take(50)
-            ->get();
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->paginate(10)
+            ->withQueryString();
 
         // Get today's stats
         $todayTotal = SalesTransaction::completed()
@@ -59,6 +66,7 @@ class SalesController extends Controller
             'todayTransactions' => $todayTransactions,
             'avgSaleValue' => $avgSaleValue,
             'topSellerName' => $topSellerName,
+            'timezone' => $timezone,
         ]);
     }
     
@@ -80,16 +88,82 @@ class SalesController extends Controller
      */
     public function pos()
     {
-        // Get available inventory items with batches
+        $timezone = OwnerSetting::forUser(Auth::id())->timezone ?: config('app.timezone');
+        $todayStart = Carbon::now($timezone)->startOfDay();
+        $tomorrowStart = $todayStart->copy()->addDay();
+        $todayStart->utc();
+        $tomorrowStart->utc();
+
         $products = InventoryItem::with(['batches' => function($query) {
             $query->where('status', 'available')
                   ->where('quantity', '>', 0)
                   ->orderBy('expiry_date', 'asc'); // FIFO
         }])
-        ->where('stock_quantity', '>', 0)
+        ->where('status', 'active')
+        ->whereHas('batches', function($query) {
+            $query->where('status', 'available')->where('quantity', '>', 0);
+        })
         ->get();
 
-        return view('pages.pos', ['products' => $products, 'posAlerts' => $this->posAlerts()]);
+        $todaySales = SalesTransaction::completed()
+            ->whereBetween('created_at', [$todayStart, $tomorrowStart])
+            ->sum('total_amount');
+        $todayTransactions = SalesTransaction::completed()
+            ->whereBetween('created_at', [$todayStart, $tomorrowStart])
+            ->count();
+        $topSeller = SalesItem::query()
+            ->select('inventory_item_id', DB::raw('SUM(quantity) as total_qty'))
+            ->whereHas('saleTransaction', function ($query) use ($todayStart, $tomorrowStart) {
+                $query->completed()->whereBetween('created_at', [$todayStart, $tomorrowStart]);
+            })
+            ->groupBy('inventory_item_id')
+            ->orderByDesc('total_qty')
+            ->with('inventoryItem')
+            ->first();
+
+        $recentTransactions = SalesTransaction::completed()
+            ->where('payment_method', '!=', 'adjustment')
+            ->with('salesItems')
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->limit(5)
+            ->get()
+            ->map(function ($transaction) use ($timezone) {
+                $customer = preg_match('/^Customer:\s*(.+)$/i', (string) $transaction->notes, $matches)
+                    ? trim($matches[1])
+                    : 'Walk-in Customer';
+
+                return [
+                    'transaction_code' => $transaction->transaction_code,
+                    'customer' => $customer ?: 'Walk-in Customer',
+                    'line_count' => $transaction->salesItems->count(),
+                    'total_amount' => (float) $transaction->total_amount,
+                    'payment_method' => ucfirst($transaction->payment_method),
+                    'created_at' => $transaction->created_at->copy()->timezone($timezone)->format('h:i A'),
+                ];
+            })
+            ->values();
+
+        $activeProductCount = InventoryItem::where('status', 'active')
+            ->whereHas('batches', function ($query) {
+                $query->where('status', 'available')->where('quantity', '>', 0);
+            })
+            ->count();
+
+        $posSummary = [
+            ['M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z','text-violet-500',"Today's Sales",'₱' . number_format((float) $todaySales, 2),'text-violet-700'],
+            ['M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z','text-green-500','Transactions',(string) $todayTransactions,'text-green-700'],
+            ['M5 3l14 9-14 9V3z','text-amber-500',"Today's Best Seller",$topSeller?->inventoryItem?->name ?? 'N/A','text-amber-700'],
+            ['M13 7h8m0 0v8m0-8l-8 8-4-4-6 6','text-blue-500','Active Products',(string) $activeProductCount,'text-blue-700'],
+        ];
+
+        return view('pages.pos', [
+            'products' => $products,
+            'posAlerts' => $this->posAlerts(),
+            'recentTransactions' => $recentTransactions,
+            'posSummary' => $posSummary,
+            'timezone' => $timezone,
+        ]);
     }
 
     /**
@@ -144,31 +218,76 @@ class SalesController extends Controller
             'items.*.product_id' => 'required|exists:inventory_items,id',
             'items.*.batch_id' => 'required|exists:inventory_batches,id',
             'items.*.quantity' => 'required|numeric|min:0.01',
-            'items.*.price' => 'required|numeric|min:0',
-            'payment_method' => 'required|string',
-            'discount_amount' => 'nullable|numeric|min:0',
+            'payment_method' => 'required|in:cash,gcash',
+            'discount_percent' => 'nullable|numeric|min:0|max:100',
+            'cash_received' => 'nullable|numeric|min:0',
             'notes' => 'nullable|string',
         ]);
 
-        DB::beginTransaction();
-        try {
-            // Calculate totals
-            $subtotal = 0;
-            foreach ($validated['items'] as $item) {
-                $subtotal += $item['quantity'] * $item['price'];
+        $cashReceived = (float) ($validated['cash_received'] ?? 0);
+        $transaction = DB::transaction(function () use ($validated, $cashReceived) {
+            $lines = collect($validated['items']);
+            $batchLinesById = $lines->groupBy('batch_id')->sortKeys();
+            $batches = [];
+            foreach ($batchLinesById as $batchId => $batchLines) {
+                $batch = InventoryBatch::whereKey($batchId)->lockForUpdate()->first();
+                if (!$batch || $batch->status !== 'available' || (float) $batch->quantity <= 0) {
+                    throw ValidationException::withMessages([
+                        'items' => 'One of the selected batches is no longer available. Refresh the products and try again.',
+                    ]);
+                }
+
+                if ($batchLines->contains(fn ($line) => (int) $line['product_id'] !== (int) $batch->inventory_item_id)) {
+                    throw ValidationException::withMessages([
+                        'items' => 'A selected batch does not belong to its product.',
+                    ]);
+                }
+
+                $requestedQuantity = $batchLines->sum(fn ($line) => (float) $line['quantity']);
+                if ((float) $batch->quantity < $requestedQuantity) {
+                    throw ValidationException::withMessages([
+                        'items' => "Insufficient stock in batch {$batch->batch_code}. Refresh the products and try again.",
+                    ]);
+                }
+
+                $product = InventoryItem::whereKey($batch->inventory_item_id)
+                    ->lockForUpdate()
+                    ->first();
+                if (!$product || $product->status !== 'active') {
+                    throw ValidationException::withMessages([
+                        'items' => 'One of the selected products is no longer active.',
+                    ]);
+                }
+
+                $batches[$batchId] = $batch;
             }
 
-            $discountAmount = $validated['discount_amount'] ?? 0;
-            $taxAmount = 0; // You can add tax calculation here if needed
-            $totalAmount = $subtotal - $discountAmount + $taxAmount;
+            $subtotal = 0;
+            foreach ($lines as $item) {
+                $batch = $batches[$item['batch_id']];
+                $subtotal += round((float) $item['quantity'] * (float) $batch->price_per_unit, 2);
+            }
 
-            // Generate transaction code
-            $transactionCode = 'TXN-' . date('Ymd') . '-' . str_pad(rand(1, 9999), 4, '0', STR_PAD_LEFT);
+            $discountPercent = (float) ($validated['discount_percent'] ?? 0);
+            $discountAmount = round($subtotal * $discountPercent / 100, 2);
 
-            // Create transaction
+            $taxableAmount = max(0, $subtotal - $discountAmount);
+            $taxAmount = round($taxableAmount * self::TAX_RATE, 2);
+            $totalAmount = round($taxableAmount + $taxAmount, 2);
+            if ($validated['payment_method'] === 'cash' && $cashReceived > 0 && $cashReceived < $totalAmount) {
+                throw ValidationException::withMessages([
+                    'cash_received' => 'Cash received is less than the server-calculated total.',
+                ]);
+            }
+
+            // Generate transaction code using the user's local date.
+            $timezone = OwnerSetting::forUser(Auth::id())->timezone ?: config('app.timezone');
+            $transactionCode = 'TXN-' . now($timezone)->format('Ymd') . '-' . str_pad(rand(1, 9999), 4, '0', STR_PAD_LEFT);
+
             $transaction = SalesTransaction::create([
                 'user_id' => Auth::id(),
                 'transaction_code' => $transactionCode,
+                'type' => 'sale',
                 'subtotal' => $subtotal,
                 'tax_amount' => $taxAmount,
                 'discount_amount' => $discountAmount,
@@ -178,53 +297,60 @@ class SalesController extends Controller
                 'notes' => $validated['notes'] ?? null,
             ]);
 
-            // Create sales items and update inventory
-            foreach ($validated['items'] as $itemData) {
-                $batch = InventoryBatch::findOrFail($itemData['batch_id']);
-                
-                // Check if batch has enough stock
-                if ($batch->quantity < $itemData['quantity']) {
-                    throw new \Exception("Insufficient stock for {$batch->inventoryItem->name} - Batch {$batch->batch_code}");
-                }
-
-                // Create sales item
+            foreach ($lines as $itemData) {
+                $batch = $batches[$itemData['batch_id']];
+                $unitPrice = (float) $batch->price_per_unit;
                 SalesItem::create([
                     'sale_transaction_id' => $transaction->id,
                     'inventory_item_id' => $itemData['product_id'],
                     'inventory_batch_id' => $itemData['batch_id'],
                     'quantity' => $itemData['quantity'],
-                    'unit_price' => $itemData['price'],
-                    'total_amount' => $itemData['quantity'] * $itemData['price'],
+                    'unit_price' => $unitPrice,
+                    'total_amount' => round((float) $itemData['quantity'] * $unitPrice, 2),
                 ]);
+            }
 
-                // Reduce batch stock (FIFO)
-                $batch->decrement('quantity', $itemData['quantity']);
+            $affectedItemIds = [];
+            foreach ($batchLinesById as $batchId => $batchLines) {
+                $batch = $batches[$batchId];
+                $batch->decrement('quantity', $batchLines->sum(fn ($line) => (float) $line['quantity']));
+                $batch->refresh();
                 if ($batch->quantity <= 0) {
                     $batch->update(['status' => 'depleted']);
                 }
-
-                // Update inventory item stock
-                $batch->inventoryItem->decrement('stock_quantity', $itemData['quantity']);
+                $affectedItemIds[$batch->inventory_item_id] = true;
             }
 
-            DB::commit();
+            foreach (array_keys($affectedItemIds) as $itemId) {
+                \App\Models\InventoryItem::findOrFail($itemId)->syncStockQuantityFromBatches();
+            }
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Sale completed successfully',
-                'data' => [
-                    'transaction_code' => $transactionCode,
-                    'total_amount' => $totalAmount,
-                    'transaction_id' => $transaction->id,
-                ],
-            ], 201);
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to complete sale: ' . $e->getMessage(),
-            ], 500);
-        }
+            return $transaction;
+        });
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Sale completed successfully',
+            'data' => [
+                'transaction_code' => $transaction->transaction_code,
+                'subtotal' => (float) $transaction->subtotal,
+                'tax_amount' => (float) $transaction->tax_amount,
+                'discount_amount' => (float) $transaction->discount_amount,
+                'total_amount' => (float) $transaction->total_amount,
+                'transaction_id' => $transaction->id,
+                'created_at' => $transaction->created_at->copy()
+                    ->timezone(OwnerSetting::forUser(Auth::id())->timezone ?: config('app.timezone'))
+                    ->format('h:i A'),
+                'payment_method' => ucfirst($transaction->payment_method),
+                'change_amount' => $transaction->payment_method === 'cash'
+                    ? round(max(0, $cashReceived - (float) $transaction->total_amount), 2)
+                    : 0,
+                'customer' => preg_match('/^Customer:\s*(.+)$/i', (string) $transaction->notes, $matches)
+                    ? (trim($matches[1]) ?: 'Walk-in Customer')
+                    : 'Walk-in Customer',
+                'line_count' => count($validated['items']),
+            ],
+        ], 201);
     }
 
     /**
@@ -337,6 +463,7 @@ class SalesController extends Controller
                   ->where('quantity', '>', 0)
                   ->orderBy('expiry_date', 'asc');
         }])
+        ->where('status', 'active')
         ->get()
         ->filter(function($item) {
             // Only include items that have available batches
@@ -354,6 +481,9 @@ class SalesController extends Controller
                 'name' => $item->name,
                 'category' => $item->category,
                 'unit' => $item->unit,
+                'freshness_score' => $item->freshness_score,
+                'spoilage_risk' => $item->spoilage_risk,
+                'storage_notes' => $item->storage_notes,
                 'available_stock' => $totalAvailable,
                 'batches' => $item->batches->map(function($batch) {
                     return [

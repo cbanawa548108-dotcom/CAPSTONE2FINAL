@@ -1,4 +1,4 @@
-﻿@php
+@php
 $route = request()->route()->getName();
 $user = auth()->user();
 
@@ -40,30 +40,14 @@ $userRole = $roleNames[$user->role ?? 'owner'] ?? 'User';
 @endphp
 
 <aside x-bind:class="sidebarOpen ? 'w-[260px]' : 'w-[72px]'"
-       class="sidebar bg-white border-r border-[rgba(124,58,237,.08)] shadow-[2px_0_20px_rgba(124,58,237,.06)] flex flex-col h-screen flex-shrink-0 z-40 overflow-hidden">
+       class="sidebar sticky top-0 self-start bg-white border-r border-[rgba(124,58,237,.08)] shadow-[2px_0_20px_rgba(124,58,237,.06)] flex flex-col h-screen flex-shrink-0 z-40 overflow-hidden">
 
     {{-- Logo --}}
     <div class="flex items-center h-[68px] px-4 border-b border-[rgba(124,58,237,.06)] flex-shrink-0">
-        <div class="flex items-center gap-3 min-w-0">
-            <div class="w-10 h-10 g-violet rounded-2xl flex items-center justify-center flex-shrink-0 shadow-lg shadow-violet-300/40">
-                {{-- Leaf / nature icon for fruit brand --}}
-                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round"
-                          d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2z
-                             M8.5 15.5c1-3 3-5 6-6.5
-                             M12 20v-8"/>
-                </svg>
-            </div>
-            <div x-show="sidebarOpen"
-                 x-transition:enter="transition-opacity duration-200 delay-100"
-                 x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100"
-                 x-transition:leave="transition-opacity duration-100"
-                 x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0"
-                 class="min-w-0">
-                <p class="font-black text-[15px] text-gray-900 leading-tight" style="font-family:Poppins,sans-serif">FreshTrack</p>
-                <p class="text-[11px] text-violet-500 font-medium truncate">Davao City · AI Platform</p>
-            </div>
-        </div>
+        <img src="{{ asset('images/freshtrack-logo.svg') }}" alt="FreshTrack — Sales and Spoilage Forecasting"
+             class="h-auto object-contain transition-all duration-200 flex-shrink-0"
+             style="width:40px"
+             :style="sidebarOpen ? 'width:220px' : 'width:40px'">
     </div>
 
     {{-- Navigation --}}

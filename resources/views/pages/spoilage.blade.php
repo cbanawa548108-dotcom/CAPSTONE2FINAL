@@ -33,6 +33,8 @@
     </div>
 </div>
 
+@include('pages.partials.weather-summary')
+
 <template x-if="message">
     <div class="card p-4 mb-5 border-l-4" :class="messageOk ? 'border-violet-400' : 'border-red-400'">
         <p class="text-[13px] font-semibold" :class="messageOk ? 'text-gray-700' : 'text-red-600'" x-text="message"></p>
@@ -68,31 +70,39 @@
 </div>
 
 {{-- ── CHARTS ── --}}
-<div class="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-7 fade-up delay-2">
-    <div class="card p-6">
+<div class="grid grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3 items-start gap-5 mb-7 fade-up delay-2">
+    <div class="card min-w-0 self-start p-6">
         <h3 class="font-bold text-gray-900 text-[15px] mb-1">Spoilage Risk by Batch</h3>
         <p class="text-[12px] text-gray-400 mb-4">Predicted % of on-hand stock that will spoil</p>
-        <canvas id="spoilageBarChart" height="220"></canvas>
+        <div class="relative h-[300px] w-full">
+            <canvas id="spoilageBarChart" class="!h-full !w-full"></canvas>
+        </div>
     </div>
-    <div class="card p-6">
+    <div class="card min-w-0 self-start p-6">
         <h3 class="font-bold text-gray-900 text-[15px] mb-1">Risk Timeline</h3>
         <p class="text-[12px] text-gray-400 mb-4">Projected risk over 7 days if unsold (forecast weather)</p>
-        <canvas id="riskTimelineChart" height="220"></canvas>
+        <div class="relative h-[300px] w-full">
+            <canvas id="riskTimelineChart" class="!h-full !w-full"></canvas>
+        </div>
     </div>
-    <div class="card p-6">
+    <div class="card min-w-0 self-start p-6 xl:col-span-2 2xl:col-span-1">
         <h3 class="font-bold text-gray-900 text-[15px] mb-1">Priority Distribution</h3>
         <p class="text-[12px] text-gray-400 mb-4">Risk level breakdown</p>
-        <canvas id="priorityDonut" height="170"></canvas>
-        <div class="mt-4 space-y-2">
-            <template x-for="(lvl, i) in levels" :key="lvl">
-                <div class="flex items-center justify-between">
-                    <div class="flex items-center gap-2">
-                        <span class="w-2.5 h-2.5 rounded-full" :style="'background:' + levelColors[i]"></span>
-                        <span class="text-[12.5px] text-gray-600" x-text="lvl"></span>
+        <div class="flex flex-col sm:flex-row sm:items-center gap-5">
+            <div class="relative h-[180px] w-full sm:w-1/2">
+                <canvas id="priorityDonut" class="!h-full !w-full"></canvas>
+            </div>
+            <div class="flex-1 space-y-2">
+                <template x-for="(lvl, i) in levels" :key="lvl">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <span class="w-2.5 h-2.5 rounded-full" :style="'background:' + levelColors[i]"></span>
+                            <span class="text-[12.5px] text-gray-600" x-text="lvl"></span>
+                        </div>
+                        <span class="text-[12.5px] font-bold text-gray-800" x-text="(summary.counts?.[lvl] ?? 0) + ' batches'"></span>
                     </div>
-                    <span class="text-[12.5px] font-bold text-gray-800" x-text="(summary.counts?.[lvl] ?? 0) + ' batches'"></span>
-                </div>
-            </template>
+                </template>
+            </div>
         </div>
     </div>
 </div>
@@ -150,7 +160,7 @@
                 <th class="text-left">Recommendation</th>
             </tr></thead>
             <tbody>
-            <template x-for="b in batches" :key="b.batch_id">
+            <template x-for="b in paginatedBatches" :key="b.batch_id">
                 <tr>
                     <td>
                         <div class="flex items-center gap-2.5">
@@ -183,6 +193,25 @@
             </template>
             </tbody>
         </table>
+    </div>
+    <div x-show="batches.length > pageSize" class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-5 py-4 border-t border-gray-100">
+        <p class="text-[12px] text-gray-500">
+            Showing <span class="font-semibold text-gray-700" x-text="pageStart"></span>–<span class="font-semibold text-gray-700" x-text="pageEnd"></span>
+            of <span class="font-semibold text-gray-700" x-text="batches.length"></span> batches
+        </p>
+        <div class="flex items-center justify-end gap-2">
+            <button type="button" @click="currentPage--" :disabled="currentPage === 1"
+                    class="btn btn-outline btn-sm disabled:opacity-40 disabled:cursor-not-allowed">
+                Previous
+            </button>
+            <span class="min-w-20 text-center text-[12px] font-semibold text-gray-600">
+                Page <span x-text="currentPage"></span> of <span x-text="pageCount"></span>
+            </span>
+            <button type="button" @click="currentPage++" :disabled="currentPage === pageCount"
+                    class="btn btn-outline btn-sm disabled:opacity-40 disabled:cursor-not-allowed">
+                Next
+            </button>
+        </div>
     </div>
 </div>
 
@@ -218,9 +247,17 @@ function spoilagePage() {
     return {
         loading: true, running: false, hasPredictions: false, message: '', messageOk: true,
         run: null, summary: {}, batches: [], timeline: [], horizonLabels: [], charts: {},
+        pageSize: 8, currentPage: 1,
         levels: ['Critical', 'High Risk', 'Moderate', 'Low Risk', 'Fresh'],
         levelColors: ['#EF4444', '#F97316', '#FACC15', '#3B82F6', '#10B981'],
 
+        get pageCount() { return Math.max(1, Math.ceil(this.batches.length / this.pageSize)); },
+        get paginatedBatches() {
+            const start = (this.currentPage - 1) * this.pageSize;
+            return this.batches.slice(start, start + this.pageSize);
+        },
+        get pageStart() { return this.batches.length ? (this.currentPage - 1) * this.pageSize + 1 : 0; },
+        get pageEnd() { return Math.min(this.currentPage * this.pageSize, this.batches.length); },
         get highCount() { return (this.summary.counts?.['Critical'] ?? 0) + (this.summary.counts?.['High Risk'] ?? 0); },
         get cards() {
             const c = this.summary.counts || {};
@@ -249,6 +286,7 @@ function spoilagePage() {
                 if (res.has_predictions) {
                     this.summary = res.summary;
                     this.batches = res.batches;
+                    this.currentPage = Math.min(this.currentPage, this.pageCount);
                     this.timeline = res.timeline;
                     this.horizonLabels = res.horizon_labels;
                 }
@@ -291,16 +329,42 @@ function spoilagePage() {
 
             this.charts.bar = new Chart(document.getElementById('spoilageBarChart'), { type: 'bar',
                 data: { labels: top.map(b => b.fruit + ' ' + b.batch_code.split('-').pop()), datasets: [{ label: 'Spoilage %', data: top.map(b => b.risk_score), backgroundColor: top.map(b => color(b.risk_score)), borderRadius: 6 }] },
-                options: { indexAxis: 'y', responsive: true, plugins: { legend: { display: false } }, scales: { x: { grid: { color: gc }, ticks: { font: { size: 10 }, color: '#9CA3AF', callback: v => v + '%' }, max: 100 }, y: { grid: { display: false }, ticks: { font: { size: 10 }, color: '#6B7280' } } } } });
+                options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { color: gc }, ticks: { font: { size: 10 }, color: '#9CA3AF', callback: v => v + '%' }, max: 100 }, y: { grid: { display: false }, ticks: { font: { size: 10 }, color: '#6B7280' } } } } });
 
             const lineColors = ['#EF4444', '#F97316', '#F59E0B', '#3B82F6', '#10B981'];
             this.charts.timeline = new Chart(document.getElementById('riskTimelineChart'), { type: 'line',
                 data: { labels: this.horizonLabels, datasets: this.timeline.map((t, i) => ({ label: t.label, data: t.data, borderColor: lineColors[i], tension: .3, fill: false, borderWidth: 2, pointRadius: 3 })) },
-                options: { responsive: true, plugins: { legend: { position: 'top', labels: { font: { size: 10 } } } }, scales: { x: { grid: { display: false }, ticks: { font: { size: 10 }, color: '#9CA3AF' } }, y: { grid: { color: gc }, border: { display: false }, ticks: { font: { size: 10 }, color: '#9CA3AF', callback: v => v + '%' }, max: 100, min: 0 } } } });
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { font: { size: 9 }, boxWidth: 10, padding: 8 } } }, scales: { x: { grid: { display: false }, ticks: { font: { size: 10 }, color: '#9CA3AF' } }, y: { grid: { color: gc }, border: { display: false }, ticks: { font: { size: 10 }, color: '#9CA3AF', callback: v => v + '%' }, max: 100, min: 0 } } } });
 
             this.charts.donut = new Chart(document.getElementById('priorityDonut'), { type: 'doughnut',
                 data: { labels: this.levels, datasets: [{ data: this.levels.map(l => this.summary.counts?.[l] ?? 0), backgroundColor: this.levelColors, borderWidth: 0, hoverOffset: 10 }] },
-                options: { responsive: true, cutout: '68%', plugins: { legend: { display: false } } } });
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '68%',
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                title: items => this.levels[items[0].dataIndex],
+                                label: item => `${item.formattedValue} batches`,
+                                afterBody: items => {
+                                    const level = this.levels[items[0].dataIndex];
+                                    const matchingBatches = this.batches.filter(batch => batch.risk_level === level);
+                                    const visibleBatches = matchingBatches.slice(0, 10).map(batch =>
+                                        `${batch.fruit} — ${batch.batch_code} (${batch.quantity} ${batch.unit})`
+                                    );
+
+                                    if (matchingBatches.length > visibleBatches.length) {
+                                        visibleBatches.push(`+ ${matchingBatches.length - visibleBatches.length} more batches`);
+                                    }
+
+                                    return visibleBatches;
+                                },
+                            },
+                        },
+                    },
+                } });
 
             // Collapse the one-hot fruit columns into a single "fruit type" importance
             const imp = this.run?.metrics?.feature_importance || {};

@@ -1,4 +1,4 @@
-﻿<x-app-layout>
+<x-app-layout>
 <x-slot name="title">Analytics — FreshTrack</x-slot>
 
 <div x-data="analyticsController()" x-init="init()">
@@ -123,24 +123,53 @@
 
 {{-- Row 2 --}}
 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-5 fade-up delay-3">
-    <div class="card p-5"><h3 class="font-bold text-gray-900 text-[14px] mb-1">Weekly Sales</h3><p class="text-[11.5px] text-gray-400 mb-3">Last 8 weeks</p><canvas id="weeklyBar" height="150"></canvas></div>
-    <div class="card p-5"><h3 class="font-bold text-gray-900 text-[14px] mb-1">Cumulative Revenue</h3><p class="text-[11.5px] text-gray-400 mb-3">Month-to-date</p><canvas id="cumulativeChart" height="150"></canvas></div>
-    <div class="card p-5">
+    <div class="card min-w-0 p-5">
+        <h3 class="font-bold text-gray-900 text-[14px] mb-1">Weekly Sales</h3>
+        <p class="text-[11.5px] text-gray-400 mb-3">Last 8 weeks</p>
+        <div class="relative h-48 w-full"><canvas id="weeklyBar" class="!h-full !w-full"></canvas></div>
+    </div>
+    <div class="card min-w-0 p-5">
+        <h3 class="font-bold text-gray-900 text-[14px] mb-1">Cumulative Revenue</h3>
+        <p class="text-[11.5px] text-gray-400 mb-3">Month-to-date</p>
+        <div class="relative h-48 w-full"><canvas id="cumulativeChart" class="!h-full !w-full"></canvas></div>
+    </div>
+    <div class="card min-w-0 p-5">
         <h3 class="font-bold text-gray-900 text-[14px] mb-1">Forecast Accuracy</h3><p class="text-[11.5px] text-gray-400 mb-3">By fruit category</p>
-        <canvas id="accDonut" height="110"></canvas>
-        <div class="mt-3 space-y-1.5">
-            @foreach([['Mango','99.8%','#7C3AED'],['Durian','96%','#10B981'],['Pineapple','92.9%','#3B82F6'],['Others','95.2%','#8B5CF6']] as [$n,$v,$c])
-            <div class="flex justify-between"><div class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full" style="background:{{ $c }}"></span><span class="text-[12px] text-gray-600">{{ $n }}</span></div><span class="text-[12px] font-bold text-gray-800">{{ $v }}</span></div>
-            @endforeach
+        <div class="flex h-48 min-w-0 items-center gap-3">
+            <div class="relative h-full min-w-0 flex-1"><canvas id="accDonut" class="!h-full !w-full"></canvas></div>
+            <div class="w-24 flex-shrink-0 space-y-2">
+                @foreach([['Mango','99.8%','#7C3AED'],['Durian','96%','#10B981'],['Pineapple','92.9%','#3B82F6'],['Others','95.2%','#8B5CF6']] as [$n,$v,$c])
+                <div class="flex items-center justify-between gap-1">
+                    <div class="flex min-w-0 items-center gap-1.5"><span class="w-2 h-2 flex-shrink-0 rounded-full" style="background:{{ $c }}"></span><span class="truncate text-[11px] text-gray-600">{{ $n }}</span></div>
+                    <span class="text-[11px] font-bold text-gray-800">{{ $v }}</span>
+                </div>
+                @endforeach
+            </div>
         </div>
     </div>
-    <div class="card p-5"><h3 class="font-bold text-gray-900 text-[14px] mb-1">Waste Reduction</h3><p class="text-[11.5px] text-gray-400 mb-3">Monthly spoilage rate</p><canvas id="wasteBar" height="150"></canvas></div>
+    <div class="card min-w-0 p-5">
+        <h3 class="font-bold text-gray-900 text-[14px] mb-1">Waste Reduction</h3>
+        <p class="text-[11.5px] text-gray-400 mb-3">Monthly spoilage rate</p>
+        <div class="relative h-48 w-full"><canvas id="wasteBar" class="!h-full !w-full"></canvas></div>
+    </div>
 </div>
 
 {{-- Row 3 --}}
-<div class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-7 fade-up delay-4">
-    <div class="card p-6"><h3 class="font-bold text-gray-900 text-[15px] mb-1">Sales by Fruit per Month</h3><p class="text-[12px] text-gray-400 mb-4">Stacked revenue breakdown</p><canvas id="stackedChart" height="150"></canvas></div>
-    <div class="card p-6"><h3 class="font-bold text-gray-900 text-[15px] mb-1">Performance Radar</h3><p class="text-[12px] text-gray-400 mb-4">Multi-dimensional business health</p><canvas id="radarChart" height="150"></canvas></div>
+<div class="grid grid-cols-1 lg:grid-cols-2 items-stretch gap-5 mb-7 fade-up delay-4">
+    <div class="card flex min-w-0 flex-col p-6">
+        <h3 class="font-bold text-gray-900 text-[15px] mb-1">Sales by Fruit per Month</h3>
+        <p class="text-[12px] text-gray-400 mb-4">Stacked revenue breakdown</p>
+        <div class="relative h-[min(62vh,560px)] min-h-[320px] w-full flex-1">
+            <canvas id="stackedChart" class="!h-full !w-full"></canvas>
+        </div>
+    </div>
+    <div class="card flex min-w-0 flex-col p-6">
+        <h3 class="font-bold text-gray-900 text-[15px] mb-1">Performance Radar</h3>
+        <p class="text-[12px] text-gray-400 mb-4">Multi-dimensional business health</p>
+        <div class="relative h-[min(62vh,560px)] min-h-[320px] w-full flex-1">
+            <canvas id="radarChart" class="!h-full !w-full"></canvas>
+        </div>
+    </div>
 </div>
 
 {{-- Summary Banners --}}
@@ -252,7 +281,7 @@ function analyticsController() {
                     labels: weekly.labels||[],
                     datasets:[{data:weekly.data||[], backgroundColor:'#7C3AED', borderRadius:8}]
                 },
-                options:{responsive:true,plugins:{legend:{display:false}},scales:{x:{grid:{display:false},ticks:{font:{size:9},color:'#9CA3AF'}},y:{grid:{color:gc},border:{display:false},ticks:{font:{size:9},color:'#9CA3AF',callback:v=>'₱'+(v/1000)+'k'}}}}
+                options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false},ticks:{font:{size:9},color:'#9CA3AF'}},y:{grid:{color:gc},border:{display:false},ticks:{font:{size:9},color:'#9CA3AF',callback:v=>'₱'+(v/1000)+'k'}}}}
             });
             
             // Cumulative
@@ -262,7 +291,7 @@ function analyticsController() {
                     labels: cumul.labels||[],
                     datasets:[{data:cumul.data||[], borderColor:'#6366F1', backgroundColor:'rgba(99,102,241,.1)', fill:true, tension:.4, borderWidth:2, pointRadius:0}]
                 },
-                options:{responsive:true,plugins:{legend:{display:false}},scales:{x:{grid:{display:false},ticks:{font:{size:9}}},y:{grid:{color:gc},border:{display:false},ticks:{font:{size:9},color:'#9CA3AF',callback:v=>'₱'+(v/1000).toFixed(0)+'k'}}}}
+                options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false},ticks:{font:{size:9}}},y:{grid:{color:gc},border:{display:false},ticks:{font:{size:9},color:'#9CA3AF',callback:v=>'₱'+(v/1000).toFixed(0)+'k'}}}}
             });
             
             // Forecast Accuracy Donut (static placeholder)
@@ -272,7 +301,7 @@ function analyticsController() {
                     labels:['Mango','Durian','Pineapple','Others'],
                     datasets:[{data:[99.8,96,92.9,95.2], backgroundColor:['#7C3AED','#10B981','#3B82F6','#8B5CF6'], borderWidth:0}]
                 },
-                options:{responsive:true,cutout:'65%',plugins:{legend:{display:false}}}
+                options:{responsive:true,maintainAspectRatio:false,cutout:'65%',plugins:{legend:{display:false}}}
             });
             
             // Waste Reduction Bar
@@ -282,7 +311,7 @@ function analyticsController() {
                     labels: waste.labels||[],
                     datasets:[{data:waste.data||[], backgroundColor:waste.colors||[], borderRadius:8}]
                 },
-                options:{responsive:true,plugins:{legend:{display:false}},scales:{x:{grid:{display:false},ticks:{font:{size:9}}},y:{grid:{color:gc},border:{display:false},ticks:{font:{size:9},color:'#9CA3AF',callback:v=>v+'%'}}}}
+                options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false},ticks:{font:{size:9}}},y:{grid:{color:gc},border:{display:false},ticks:{font:{size:9},color:'#9CA3AF',callback:v=>v+'%'}}}}
             });
             
             // Stacked Sales
@@ -292,7 +321,7 @@ function analyticsController() {
                     labels: stacked.labels||[],
                     datasets: (stacked.datasets||[]).map(d=>({...d, borderRadius:0}))
                 },
-                options:{responsive:true,plugins:{legend:{position:'top',labels:{font:{size:10}}}},scales:{x:{stacked:true,grid:{display:false}},y:{stacked:true,grid:{color:gc},border:{display:false},ticks:{font:{size:10},color:'#9CA3AF',callback:v=>'₱'+(v/1000).toFixed(0)+'k'}}}}
+                options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top',labels:{font:{size:10}}}},scales:{x:{stacked:true,grid:{display:false}},y:{stacked:true,grid:{color:gc},border:{display:false},ticks:{font:{size:10},color:'#9CA3AF',callback:v=>'₱'+(v/1000).toFixed(0)+'k'}}}}
             });
             
             // Radar Chart
@@ -305,7 +334,7 @@ function analyticsController() {
                         {label:'Last Month', data:[82,78,95,85,52,92], borderColor:'#9CA3AF',backgroundColor:'rgba(156,163,175,.08)',borderWidth:2,borderDash:[5,5],pointRadius:3}
                     ]
                 },
-                options:{responsive:true,plugins:{legend:{position:'top',labels:{font:{size:11}}}},scales:{r:{grid:{color:'#E5E7EB'},ticks:{font:{size:9}},pointLabels:{font:{size:11}},beginAtZero:true,max:100}}}
+                options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top',labels:{font:{size:11}}}},scales:{r:{grid:{color:'#E5E7EB'},ticks:{font:{size:9}},pointLabels:{font:{size:11}},beginAtZero:true,max:100}}}
             });
         }
     };

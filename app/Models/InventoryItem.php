@@ -84,6 +84,16 @@ class InventoryItem extends Model
     }
 
     /**
+     * Keep the cached item quantity aligned with its available batches.
+     */
+    public function syncStockQuantityFromBatches(): void
+    {
+        $this->forceFill([
+            'stock_quantity' => $this->availableBatches()->sum('quantity'),
+        ])->save();
+    }
+
+    /**
      * Check if item is low stock.
      *
      * @return bool

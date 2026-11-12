@@ -109,7 +109,7 @@
     <div class="p-5">
         <div class="flex items-start justify-between mb-4">
             <div class="flex items-center gap-3">
-                <span class="badge badge-violet text-[10px] uppercase tracking-wide font-bold">
+                <span class="badge {{ $n->severity === 'Critical' ? 'notification-severity-critical' : 'badge-violet' }} text-[10px] uppercase tracking-wide font-bold">
                     {{ $n->severity }}
                 </span>
                 @if(!$n->is_read)

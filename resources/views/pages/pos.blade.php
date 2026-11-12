@@ -1,4 +1,4 @@
-﻿{{-- POS PAGE — uses app-layout but overrides the main padding for full-screen feel --}}
+{{-- POS PAGE — uses app-layout but overrides the main padding for full-screen feel --}}
 <x-app-layout>
 <x-slot name="title">Point of Sale — FreshTrack</x-slot>
 
@@ -182,16 +182,9 @@ document.addEventListener('DOMContentLoaded',()=>{
     {{-- ══════════════════ POS HEADER ══════════════════ --}}
     <div class="pos-header z-30">
         {{-- Logo + name --}}
-        <div class="flex items-center gap-2.5 flex-shrink-0">
-            <div class="w-9 h-9 g-violet rounded-xl flex items-center justify-center shadow-lg shadow-violet-300/40 flex-shrink-0">
-                <svg class="w-4.5 h-4.5 w-[18px] h-[18px] text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/>
-                </svg>
-            </div>
-            <div class="hidden sm:block">
-                <p class="font-black text-[13.5px] text-gray-900 leading-tight" style="font-family:Poppins,sans-serif">FreshTrack POS</p>
-                <p class="text-[10.5px] text-violet-500 font-medium">Point of Sale Terminal</p>
-            </div>
+        <div class="flex items-center flex-shrink-0">
+            <img src="{{ asset('images/freshtrack-logo.svg') }}" alt="FreshTrack — Sales and Spoilage Forecasting"
+                 class="object-contain flex-shrink-0" style="width:150px;height:auto;max-width:150px">
         </div>
 
         <div class="w-px h-6 bg-gray-200 flex-shrink-0"></div>
@@ -325,7 +318,7 @@ document.addEventListener('DOMContentLoaded',()=>{
                             {{-- Spoilage badge --}}
                             <div x-show="fruit.spoilageRisk" class="absolute top-2.5 left-2.5 z-10">
                                 <span class="badge badge-amber text-[9px] px-1.5 py-0.5"
-                                      x-text="'⚠ '+fruit.spoilageRisk+' Risk'"></span>
+                                      x-text="'⚠ '+fruit.spoilageRisk"></span>
                             </div>
                             {{-- Fruit image --}}
                             <div class="flex items-center justify-center mb-3 rounded-2xl"
@@ -336,18 +329,18 @@ document.addEventListener('DOMContentLoaded',()=>{
                             <p class="font-bold text-gray-900 text-[13px] mb-0.5 truncate" x-text="fruit.name"></p>
                             <p class="font-black text-violet-700 text-[14px]" x-text="fruit.priceLabel"></p>
                             <div class="flex items-center justify-between mt-1 mb-2.5">
-                                <span class="text-[11px] text-gray-400 font-medium" x-text="'Stock: '+fruit.stock+(fruit.unit?' '+fruit.unit:'')"></span>
+                                <span class="text-[11px] text-gray-400 font-medium" x-text="'Total: '+fruit.stock+(fruit.unit?' '+fruit.unit:'')"></span>
                                 <span class="badge-freshness"
                                       :class="fruit.freshness>=90 ? 'bg-green-100 text-green-700' : (fruit.freshness>=75 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-600')"
-                                      x-show="fruit.freshness"
+                                      x-show="fruit.freshness !== null"
                                       x-text="fruit.freshness+'%'"></span>
                             </div>
                             {{-- Add to cart btn --}}
                             <button class="add-btn ripple"
-                                    :disabled="fruit.stock===0"
-                                    :class="fruit.stock===0 ? 'opacity-40 cursor-not-allowed' : ''"
+                                    :disabled="fruit.batchStock===0"
+                                    :class="fruit.batchStock===0 ? 'opacity-40 cursor-not-allowed' : ''"
                                     @click.stop="addToCart(fruit)"
-                                    x-text="fruit.stock===0 ? '✕ Out of Stock' : (isInCart(fruit.id) ? '✓ In Cart — Add More' : '+ Add to Cart')">
+                                    x-text="fruit.batchStock===0 ? '✕ Out of Stock' : (isInCart(fruit.id) ? '✓ In Cart — Add More' : '+ Add to Cart')">
                             </button>
                         </div>
                     </template>
@@ -358,7 +351,7 @@ document.addEventListener('DOMContentLoaded',()=>{
             <div class="flex-shrink-0 bg-white border-t border-[rgba(124,58,237,.07)] px-5 py-3">
                 <div class="grid grid-cols-4 gap-3">
                     @php
-                    $posSummary = [
+                    $legacyPosSummary = [
                         ['M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z','text-violet-500',"Today's Sales",'₱18,450','text-violet-700'],
                         ['M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z','text-green-500','Transactions','24','text-green-700'],
                         ['M5 3l14 9-14 9V3z','text-amber-500','Best Seller','Mango','text-amber-700'],
@@ -596,8 +589,9 @@ document.addEventListener('DOMContentLoaded',()=>{
                     <div class="px-6 py-4 space-y-3">
                         <div class="grid grid-cols-2 gap-3">
                             <div class="bg-gray-50 rounded-2xl p-3.5 text-center border border-gray-100">
-                                <p class="text-[10px] text-gray-400 font-bold uppercase tracking-wide">Stock</p>
+                                <p class="text-[10px] text-gray-400 font-bold uppercase tracking-wide">Total Stock</p>
                                 <p class="text-[17px] font-black text-gray-800 mt-0.5" x-text="selectedFruit.stock+(selectedFruit.unit?' '+selectedFruit.unit:'')"></p>
+                                <p class="text-[10px] text-gray-500 mt-1" x-text="'FIFO batch '+selectedFruit.batch_code+': '+selectedFruit.batchStock+(selectedFruit.unit?' '+selectedFruit.unit:'')"></p>
                             </div>
                             <div class="bg-gray-50 rounded-2xl p-3.5 text-center border border-gray-100">
                                 <p class="text-[10px] text-gray-400 font-bold uppercase tracking-wide">Category</p>
@@ -616,10 +610,10 @@ document.addEventListener('DOMContentLoaded',()=>{
                     {{-- Add to cart --}}
                     <div class="px-6 pb-6">
                         <button @click="addToCart(selectedFruit); fruitModal=false"
-                                :disabled="selectedFruit.stock===0"
+                                :disabled="selectedFruit.batchStock===0"
                                 class="w-full py-3.5 rounded-2xl font-bold text-[14px] transition-all ripple"
-                                :class="selectedFruit.stock===0 ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'g-violet text-white shadow-lg shadow-violet-300/40 hover:shadow-violet-400/50 hover:-translate-y-0.5'"
-                                x-text="selectedFruit.stock===0 ? 'Out of Stock' : (isInCart(selectedFruit.id) ? '✓ Add One More' : '+ Add to Cart')">
+                                :class="selectedFruit.batchStock===0 ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'g-violet text-white shadow-lg shadow-violet-300/40 hover:shadow-violet-400/50 hover:-translate-y-0.5'"
+                                x-text="selectedFruit.batchStock===0 ? 'Selected Batch Out of Stock' : (isInCart(selectedFruit.id) ? '✓ Add One More' : '+ Add to Cart')">
                         </button>
                     </div>
                 </div>
@@ -681,7 +675,14 @@ document.addEventListener('DOMContentLoaded',()=>{
                 </div>
             </div>
             {{-- Action buttons --}}
-            <div class="px-7 pb-7 grid grid-cols-3 gap-2.5">
+            <div class="px-7 pb-7 grid grid-cols-4 gap-2.5">
+                <button @click="successModal=false"
+                        class="flex flex-col items-center gap-1.5 py-3 px-2 rounded-2xl border-2 border-violet-200 bg-violet-50 hover:border-violet-400 hover:bg-violet-100 transition-all">
+                    <svg class="w-5 h-5 text-violet-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+                    </svg>
+                    <span class="text-[11px] font-bold text-violet-700">Back to POS</span>
+                </button>
                 <button @click="printReceipt()"
                         class="flex flex-col items-center gap-1.5 py-3 px-2 rounded-2xl border-2 border-gray-200 hover:border-violet-400 hover:bg-violet-50 transition-all">
                     <svg class="w-5 h-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
@@ -782,27 +783,24 @@ document.addEventListener('DOMContentLoaded',()=>{
             <div class="flex items-center justify-between px-4 py-3 border-b border-violet-50" style="background:linear-gradient(135deg,#F5F3FF,#EDE9FE)">
                 <div class="flex items-center gap-2">
                     <span class="text-lg">🧠</span>
-                    <p class="font-bold text-[13px] text-violet-800" style="font-family:Poppins,sans-serif">AI Recommendations</p>
+                    <p class="font-bold text-[13px] text-violet-800" style="font-family:Poppins,sans-serif">Inventory Insights</p>
                 </div>
                 <button @click="showAiRecs=false" class="text-violet-400 hover:text-violet-600 transition-colors">
                     <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
                 </button>
             </div>
             <div class="p-3 space-y-2">
-                @foreach([
-                    ['🥭','Recommend selling Mango first.','Batch MNG-002 expires in 2 days.','badge-amber'],
-                    ['🍍','Apply 10% discount on Pineapple.','Demand 20% below forecast.','badge-green'],
-                    ['🍈','Restock Pomelo tomorrow.','Only 8 kg remaining, demand is 20/day.','badge-violet'],
-                    ['🍌','Banana demand up 15% this week.','Festival season boost expected.','badge-blue'],
-                ] as [$e,$rec,$note,$b])
-                <div class="flex items-start gap-2.5 p-2.5 bg-gray-50 rounded-xl hover:bg-violet-50 cursor-pointer transition-colors border border-transparent hover:border-violet-100">
-                    <span class="text-xl flex-shrink-0">{{ $e }}</span>
+                @forelse($posAlerts as $alert)
+                <div class="flex items-start gap-2.5 p-2.5 bg-gray-50 rounded-xl border border-gray-100">
+                    <span class="text-xl flex-shrink-0">{{ $alert['type'] === 'spoilage' ? '⚠️' : '📦' }}</span>
                     <div>
-                        <p class="text-[12px] font-bold text-gray-800">{{ $rec }}</p>
-                        <p class="text-[11px] text-gray-500 mt-0.5">{{ $note }}</p>
+                        <p class="text-[12px] font-bold text-gray-800">{{ $alert['name'] }} · {{ $alert['type'] === 'spoilage' ? $alert['level'] . ' spoilage risk' : 'Low stock' }}</p>
+                        <p class="text-[11px] text-gray-500 mt-0.5">{{ $alert['detail'] }}@if(!empty($alert['batch'])) · Batch {{ $alert['batch'] }}@endif</p>
                     </div>
                 </div>
-                @endforeach
+                @empty
+                <p class="px-2 py-4 text-center text-[12px] text-gray-500">No active inventory alerts.</p>
+                @endforelse
             </div>
         </div>
     </div>
@@ -810,7 +808,7 @@ document.addEventListener('DOMContentLoaded',()=>{
     {{-- AI toggle button --}}
     <button @click="showAiRecs=!showAiRecs"
             class="fixed bottom-6 right-4 z-40 w-12 h-12 g-violet rounded-2xl flex items-center justify-center shadow-xl shadow-violet-300/50 hover:shadow-violet-400/60 transition-all hover:-translate-y-0.5 active:scale-95"
-            title="AI Recommendations">
+            title="Inventory Insights">
         <span class="text-xl" x-text="showAiRecs ? '✕' : '🧠'"></span>
     </button>
 
@@ -824,24 +822,19 @@ document.addEventListener('DOMContentLoaded',()=>{
                 </button>
             </div>
             <div class="divide-y divide-gray-50 max-h-72 overflow-y-auto">
-                @foreach([
-                    ['#POS-8841','Maria Santos','3 items','₱1,240','Cash','10:32 AM','badge-green'],
-                    ['#POS-8840','Walk-in','5 items','₱2,150','GCash','10:15 AM','badge-green'],
-                    ['#POS-8839','Pedro Reyes','2 items','₱680','Maya','09:50 AM','badge-green'],
-                    ['#POS-8838','Walk-in','7 items','₱3,420','Card','09:20 AM','badge-green'],
-                    ['#POS-8837','Ana Lim','1 item','₱250','Cash','08:55 AM','badge-amber'],
-                ] as [$txn,$cust,$items,$amt,$method,$time,$b])
+                <template x-for="txn in recentTransactions" :key="txn.transaction_code">
                 <div class="flex items-center justify-between px-4 py-2.5 hover:bg-gray-50 transition-colors">
                     <div>
-                        <p class="text-[11.5px] font-bold text-gray-800">{{ $txn }}</p>
-                        <p class="text-[10.5px] text-gray-400">{{ $cust }} · {{ $items }}</p>
+                        <p class="text-[11.5px] font-bold text-gray-800" x-text="txn.transaction_code"></p>
+                        <p class="text-[10.5px] text-gray-400" x-text="txn.customer+' · '+txn.line_count+' line'+(txn.line_count===1?'':'s')"></p>
                     </div>
                     <div class="text-right">
-                        <p class="text-[12px] font-black text-gray-900">{{ $amt }}</p>
-                        <p class="text-[10px] text-gray-400">{{ $method }} · {{ $time }}</p>
+                        <p class="text-[12px] font-black text-gray-900" x-text="'₱'+formatNum(txn.total_amount)"></p>
+                        <p class="text-[10px] text-gray-400" x-text="txn.payment_method+' · '+txn.created_at"></p>
                     </div>
                 </div>
-                @endforeach
+                </template>
+                <p x-show="recentTransactions.length===0" class="px-4 py-6 text-center text-[12px] text-gray-500">No completed transactions yet.</p>
             </div>
         </div>
     </div>
@@ -869,6 +862,7 @@ function posApp() {
         showLowStockAlerts: {{ count($posAlerts) ? 'true' : 'false' }},
         showAiRecs: false,
         showRecentTxn: false,
+        recentTransactions: @json($recentTransactions),
         completedOrder: {},
         orderNumber: Date.now(),
         currentTime: '',
@@ -958,35 +952,18 @@ function posApp() {
                 });
                 this.categories = Array.from(cats);
                 
-                // Transform products to fruit format
+                // Transform backend products to the POS display format.
                 this.fruits = data.map(product => {
                     const firstBatch = product.batches && product.batches[0];
                     const emoji = this.productEmoji[product.name] || '🍎';
                     const price = firstBatch ? parseFloat(firstBatch.price_per_unit) : 0;
-                    const stock = product.available_stock || 0;
-                    
-                    // Calculate freshness based on days to expiry
-                    let freshness = 95;
-                    let spoilageRisk = null;
-                    let spoilageNote = '';
-                    
-                    if (firstBatch && firstBatch.expiry_date) {
-                        const expiryDate = new Date(firstBatch.expiry_date);
-                        const today = new Date();
-                        const daysToExpiry = Math.floor((expiryDate - today) / (1000 * 60 * 60 * 24));
-                        
-                        if (daysToExpiry <= 2) {
-                            freshness = 70;
-                            spoilageRisk = 'High';
-                            spoilageNote = `Expires in ${daysToExpiry} day(s). Sell ASAP or discount.`;
-                        } else if (daysToExpiry <= 5) {
-                            freshness = 82;
-                            spoilageRisk = 'Medium';
-                            spoilageNote = `Expires in ${daysToExpiry} days. Monitor closely.`;
-                        } else if (daysToExpiry <= 10) {
-                            freshness = 90;
-                        }
-                    }
+                    const stock = Number(product.available_stock || 0);
+                    const batchStock = firstBatch ? Number(firstBatch.quantity || 0) : 0;
+                    const storedRisk = String(product.spoilage_risk || '').trim();
+                    const spoilageRisk = ['low', 'fresh', 'none'].includes(storedRisk.toLowerCase()) ? null : storedRisk;
+                    const spoilageNote = firstBatch && firstBatch.expiry_date
+                        ? `Selected batch ${firstBatch.batch_code} expires on ${firstBatch.expiry_date}.`
+                        : '';
                     
                     return {
                         id: product.id,
@@ -996,14 +973,15 @@ function posApp() {
                         priceLabel: `₱${price.toFixed(2)}/${product.unit || 'unit'}`,
                         stock: stock,
                         unit: product.unit || 'unit',
-                        freshness: freshness,
+                        freshness: Number(product.freshness_score) || 0,
                         spoilageRisk: spoilageRisk,
                         category: product.category || 'Uncategorized',
-                        storage: 'Store in cool, dry place. Refrigerate when ripe.',
+                        storage: product.storage_notes || 'No storage recommendation is recorded for this product.',
                         spoilageNote: spoilageNote,
                         batches: product.batches || [],
                         batch_id: firstBatch ? firstBatch.id : null,
-                        batch_code: firstBatch ? firstBatch.batch_code : null
+                        batch_code: firstBatch ? firstBatch.batch_code : null,
+                        batchStock: batchStock
                     };
                 });
                 
@@ -1032,24 +1010,25 @@ function posApp() {
         },
 
         addToCart(fruit) {
-            if (fruit.stock <= 0) {
+            if (fruit.batchStock <= 0) {
                 alert(`${fruit.name} is out of stock!`);
                 return;
             }
             
             const existing = this.cart.find(i => i.id === fruit.id);
             if (existing) {
-                if (existing.qty < fruit.stock) {
+                if (existing.qty + 1 <= fruit.batchStock) {
                     existing.qty++;
                     existing.subtotal = Math.round(existing.qty * existing.price * 100) / 100;
                 } else {
-                    alert(`Maximum stock available: ${fruit.stock} ${fruit.unit}`);
+                    alert(`Maximum stock in batch ${fruit.batch_code}: ${fruit.batchStock} ${fruit.unit}`);
                 }
             } else {
-                this.cart.push({ 
-                    ...fruit, 
-                    qty: 1, 
-                    subtotal: fruit.price 
+                const initialQty = Math.min(1, fruit.batchStock);
+                this.cart.push({
+                ...fruit,
+                qty: initialQty,
+                subtotal: Math.round(initialQty * fruit.price * 100) / 100
                 });
             }
         },
@@ -1060,14 +1039,13 @@ function posApp() {
 
         increaseQty(idx) {
             const item = this.cart[idx];
-            const fruit = this.fruits.find(f => f.id === item.id);
             const newQty = Math.round((item.qty + 0.5) * 100) / 100;
             
-            if (newQty <= fruit.stock) {
+            if (newQty <= item.batchStock) {
                 item.qty = newQty;
                 item.subtotal = Math.round(item.qty * item.price * 100) / 100;
             } else {
-                alert(`Maximum stock available: ${fruit.stock} ${fruit.unit}`);
+                alert(`Maximum stock in batch ${item.batch_code}: ${item.batchStock} ${item.unit}`);
             }
         },
 
@@ -1083,7 +1061,6 @@ function posApp() {
 
         updateQty(idx, value) {
             const item = this.cart[idx];
-            const fruit = this.fruits.find(f => f.id === item.id);
             let qty = parseFloat(value) || 0;
             
             // Round to 2 decimal places
@@ -1093,9 +1070,9 @@ function posApp() {
                 qty = 0.01; // Minimum quantity
             }
             
-            if (qty > fruit.stock) {
-                qty = fruit.stock;
-                alert(`Maximum stock available: ${fruit.stock} ${fruit.unit}`);
+            if (qty > item.batchStock) {
+                qty = item.batchStock;
+                alert(`Maximum stock in batch ${item.batch_code}: ${item.batchStock} ${item.unit}`);
             }
             
             item.qty = qty;
@@ -1109,7 +1086,7 @@ function posApp() {
                 if (confirm('Remove this item from cart?')) {
                     this.removeFromCart(idx);
                 } else {
-                    item.qty = 1;
+                    item.qty = Math.min(1, item.batchStock);
                     item.subtotal = Math.round(item.qty * item.price * 100) / 100;
                 }
             }
@@ -1154,10 +1131,10 @@ function posApp() {
                         product_id: item.id,
                         batch_id: item.batch_id,
                         quantity: item.qty,
-                        price: item.price
                     })),
                     payment_method: this.paymentMethod,
-                    discount_amount: this.discountAmt,
+                    discount_percent: this.discount,
+                    cash_received: this.paymentMethod === 'cash' && this.cashReceived > 0 ? this.cashReceived : null,
                     notes: this.customerName ? `Customer: ${this.customerName}` : null
                 };
 
@@ -1166,15 +1143,23 @@ function posApp() {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
+                        'Accept': 'application/json',
                         'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
                     },
                     body: JSON.stringify(saleData)
                 });
 
-                const result = await response.json();
+                const result = await response.json().catch(() => null);
+
+                if (!result) {
+                    throw new Error(response.redirected
+                        ? 'Your session may have expired. Sign in again and retry the sale.'
+                        : `The server returned an unexpected response (HTTP ${response.status}).`);
+                }
 
                 if (!response.ok || !result.success) {
-                    throw new Error(result.message || 'Failed to complete sale');
+                    const validationMessage = result.errors ? Object.values(result.errors).flat()[0] : null;
+                    throw new Error(validationMessage || result.message || 'Failed to complete sale');
                 }
 
                 // Show success modal
@@ -1184,8 +1169,17 @@ function posApp() {
                     items: this.cart.reduce((s, i) => s + i.qty, 0),
                     total: result.data.total_amount,
                     method: this.paymentMethods.find(p => p.key === this.paymentMethod)?.label || 'Cash',
-                    change: this.change > 0 ? this.change : 0,
+                    change: result.data.change_amount,
                 };
+                this.recentTransactions.unshift({
+                    transaction_code: result.data.transaction_code,
+                    customer: result.data.customer,
+                    line_count: result.data.line_count,
+                    total_amount: result.data.total_amount,
+                    payment_method: result.data.payment_method,
+                    created_at: result.data.created_at
+                });
+                this.recentTransactions = this.recentTransactions.slice(0, 5);
                 
                 this.successModal = true;
 
