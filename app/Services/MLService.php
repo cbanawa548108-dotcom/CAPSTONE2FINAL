@@ -28,6 +28,12 @@ class MLService
     private function run(string $script, array $args = []): array
     {
         $db = config('database.connections.' . config('database.default'));
+        $python = config('services.ml.python');
+        $virtualEnvPython = base_path('.venv/bin/python');
+
+        if ($python === 'python' && PHP_OS_FAMILY !== 'Windows' && is_executable($virtualEnvPython)) {
+            $python = $virtualEnvPython;
+        }
 
         $result = Process::path(base_path())
             ->timeout((int) config('services.ml.timeout'))
@@ -41,7 +47,7 @@ class MLService
                 'OPENWEATHER_TIMEZONE' => config('services.openweather.timezone'),
                 'PYTHONIOENCODING' => 'utf-8',
             ] + $this->windowsEnv())
-            ->run(array_merge([config('services.ml.python'), base_path('ml/' . $script)], $args));
+            ->run(array_merge([$python, base_path('ml/' . $script)], $args));
 
         // The script prints a single JSON line as its last output
         $lines = array_filter(explode("\n", trim($result->output())));
