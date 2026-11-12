@@ -215,7 +215,6 @@ function analyticsController() {
         dateRange: 30,
         kpis: null,
         salesByFruit: [],
-        charts: {},
         loadError: '',
         
         formatNum(n) {
@@ -287,12 +286,12 @@ function analyticsController() {
         
         initCharts(kpis, trend, fruit, weekly, cumul, waste, stacked) {
             const gc = 'rgba(124,58,237,.06)';
-            // Destroy any existing chart instances
-            Object.values(this.charts).forEach(c => c?.destroy());
-            this.charts = {};
+            const charts = this.$el._analyticsCharts || (this.$el._analyticsCharts = {});
+            Object.values(charts).forEach(chart => chart.destroy());
+            Object.keys(charts).forEach(key => delete charts[key]);
             
             // Revenue vs Profit Trend
-            this.charts.revProfit = new Chart(document.getElementById('revProfitChart'), {
+            charts.revProfit = new Chart(document.getElementById('revProfitChart'), {
                 type:'line',
                 data:{
                     labels: trend.labels || [],
@@ -306,7 +305,7 @@ function analyticsController() {
             });
             
             // Fruit Pie
-            this.charts.fruitPie = new Chart(document.getElementById('fruitPieChart'), {
+            charts.fruitPie = new Chart(document.getElementById('fruitPieChart'), {
                 type:'pie',
                 data:{
                     labels: (fruit||[]).map(f=>f.name),
@@ -316,7 +315,7 @@ function analyticsController() {
             });
             
             // Weekly Bar
-            this.charts.weekly = new Chart(document.getElementById('weeklyBar'), {
+            charts.weekly = new Chart(document.getElementById('weeklyBar'), {
                 type:'bar',
                 data:{
                     labels: weekly.labels||[],
@@ -326,7 +325,7 @@ function analyticsController() {
             });
             
             // Cumulative
-            this.charts.cumul = new Chart(document.getElementById('cumulativeChart'), {
+            charts.cumul = new Chart(document.getElementById('cumulativeChart'), {
                 type:'line',
                 data:{
                     labels: cumul.labels||[],
@@ -336,7 +335,7 @@ function analyticsController() {
             });
             
             // Forecast Accuracy Donut (static placeholder)
-            this.charts.accDonut = new Chart(document.getElementById('accDonut'), {
+            charts.accDonut = new Chart(document.getElementById('accDonut'), {
                 type:'doughnut',
                 data:{
                     labels:['Mango','Durian','Pineapple','Others'],
@@ -346,7 +345,7 @@ function analyticsController() {
             });
             
             // Waste Reduction Bar
-            this.charts.waste = new Chart(document.getElementById('wasteBar'), {
+            charts.waste = new Chart(document.getElementById('wasteBar'), {
                 type:'bar',
                 data:{
                     labels: waste.labels||[],
@@ -356,7 +355,7 @@ function analyticsController() {
             });
             
             // Stacked Sales
-            this.charts.stacked = new Chart(document.getElementById('stackedChart'), {
+            charts.stacked = new Chart(document.getElementById('stackedChart'), {
                 type:'bar',
                 data:{
                     labels: stacked.labels||[],
@@ -366,7 +365,7 @@ function analyticsController() {
             });
             
             // Radar Chart
-            this.charts.radar = new Chart(document.getElementById('radarChart'), {
+            charts.radar = new Chart(document.getElementById('radarChart'), {
                 type:'radar',
                 data:{
                     labels:['Revenue','Profit Margin','Forecast Acc.','Stock Efficiency','Waste Reduction','Customer Rating'],
