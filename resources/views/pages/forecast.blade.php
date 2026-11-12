@@ -81,7 +81,7 @@
         <div class="icon-ring mb-3"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg></div>
         <p class="text-[24px] font-black text-gray-900" x-text="summary.accuracy != null ? summary.accuracy.toFixed(1) + '%' : '—'"></p>
         <p class="text-[12.5px] font-semibold text-gray-600">Forecast Accuracy</p>
-        <p class="text-[11.5px] text-gray-400 mt-0.5">1 − WAPE on 14-day hold-out</p>
+        <p class="text-[11.5px] text-gray-400 mt-0.5">How well recent sales were predicted</p>
     </div>
 </div>
 
@@ -178,25 +178,25 @@
 {{-- Model details --}}
 <div class="card overflow-hidden fade-up delay-4" x-show="modelRows.length">
     <div class="px-6 py-4 border-b border-gray-100">
-        <h3 class="font-bold text-gray-900 text-[15px]">SARIMAX Model Details</h3>
-        <p class="text-[12px] text-gray-400 mt-0.5">Order chosen by AIC per fruit. Weather coefficients are per 1 standard deviation; p &lt; 0.05 means the effect is statistically significant.</p>
-        <p x-show="modelDetailsWarning" class="mt-2 text-[12px] font-semibold text-amber-700">Some saved model diagnostics are unstable and hidden. Click “Refresh Forecast” to retrain those models before interpreting their metrics.</p>
+        <h3 class="font-bold text-gray-900 text-[15px]">Forecast Details by Fruit</h3>
+        <p class="text-[12px] text-gray-400 mt-0.5">Forecast error shows how far predictions were from actual sales; lower is better. Weather effects are estimates, not proof that weather caused a sales change.</p>
+        <p x-show="modelDetailsWarning" class="mt-2 text-[12px] font-semibold text-amber-700">Some results look incorrect, so they are hidden. Click “Refresh Forecast” above to try again. If they remain unavailable, the model could not make a reliable estimate.</p>
     </div>
     <div class="overflow-x-auto">
         <table class="tbl w-full">
             <thead><tr>
-                <th class="text-left">Fruit</th><th class="text-left">Order (p,d,q)(P,D,Q,s)</th><th class="text-left">MAE</th><th class="text-left">RMSE</th><th class="text-left">Temperature</th><th class="text-left">Humidity</th><th class="text-left">Rainfall</th>
+                <th class="text-left">Fruit</th><th class="text-left">Model setup</th><th class="text-left" title="Average difference between predicted and actual sales">Average error (kg)</th><th class="text-left" title="Error measure that gives extra weight to larger misses">Large-miss error (kg)</th><th class="text-left">Temperature effect</th><th class="text-left">Humidity effect</th><th class="text-left">Rain effect</th>
             </tr></thead>
             <tbody>
             <template x-for="m in modelRows" :key="m.fruit">
                 <tr>
                     <td class="font-semibold text-gray-800 text-[13px]" x-text="m.fruit"></td>
                     <td class="text-[12.5px] text-gray-600 font-mono" x-text="'(' + m.order.join(',') + ')(' + m.seasonal_order.join(',') + ')'"></td>
-                    <td class="text-[12.5px] text-gray-600" x-text="m.diagnostics_valid ? Number(m.mae).toLocaleString('en-PH', {maximumFractionDigits: 2}) + ' kg' : 'Unreliable — retrain'"></td>
-                    <td class="text-[12.5px] text-gray-600" x-text="m.diagnostics_valid ? Number(m.rmse).toLocaleString('en-PH', {maximumFractionDigits: 2}) + ' kg' : 'Unreliable — retrain'"></td>
+                    <td class="text-[12.5px] text-gray-600" x-text="m.diagnostics_valid ? Number(m.mae).toLocaleString('en-PH', {maximumFractionDigits: 2}) + ' kg' : 'Not available'"></td>
+                    <td class="text-[12.5px] text-gray-600" x-text="m.diagnostics_valid ? Number(m.rmse).toLocaleString('en-PH', {maximumFractionDigits: 2}) + ' kg' : 'Not available'"></td>
                     <template x-for="w in ['temperature','humidity','rainfall']" :key="w">
                         <td class="text-[12.5px]" :class="m.diagnostics_valid && m.weather_pvalues[w] < 0.05 ? 'font-bold text-gray-900' : 'text-gray-400'">
-                            <span x-text="m.diagnostics_valid ? (m.weather_coefficients[w] >= 0 ? '+' : '') + Number(m.weather_coefficients[w]).toLocaleString('en-PH', {maximumFractionDigits: 4}) + ' · p=' + Number(m.weather_pvalues[w]).toLocaleString('en-PH', {maximumFractionDigits: 4}) : 'Unreliable — retrain'"></span>
+                            <span x-text="m.diagnostics_valid ? (m.weather_coefficients[w] >= 0 ? '+' : '') + Number(m.weather_coefficients[w]).toLocaleString('en-PH', {maximumFractionDigits: 2}) + ' kg per typical change · ' + (m.weather_pvalues[w] < 0.05 ? 'strong' : 'limited') + ' evidence' : 'Not available'"></span>
                         </td>
                     </template>
                 </tr>
