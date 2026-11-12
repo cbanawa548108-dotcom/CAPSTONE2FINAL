@@ -9,7 +9,7 @@
 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-7 fade-up">
     <div>
         <h1 class="text-[26px] font-black text-gray-900">Sales Transactions</h1>
-        <p class="text-[13.5px] text-gray-500 mt-0.5">Track, manage and analyze all fruit sales · June 2026</p>
+        <p class="text-[13.5px] text-gray-500 mt-0.5">Track, manage and analyze all fruit sales · {{ now($timezone)->format('F Y') }}</p>
     </div>
     <div class="flex items-center gap-3">
         <button class="btn btn-outline btn-md text-[13px]">
@@ -71,7 +71,7 @@
             <svg class="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
             <input type="text" placeholder="Search transactions, fruit, cashier…" class="bg-transparent text-[13px] text-gray-700 outline-none w-full placeholder-gray-400">
         </div>
-        <input type="date" value="2026-06-23" class="inp" style="width:auto;padding:10px 14px;border-radius:12px">
+        <input type="date" value="{{ now($timezone)->toDateString() }}" class="inp" style="width:auto;padding:10px 14px;border-radius:12px">
         <select class="inp" style="width:auto;padding:10px 14px;border-radius:12px">
             <option>All Fruits</option>
             <option>Mango</option><option>Durian</option><option>Pomelo</option>
