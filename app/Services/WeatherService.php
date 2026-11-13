@@ -45,6 +45,7 @@ class WeatherService
 
         return [
             'city' => $data['name'] ?? config('services.openweather.city'),
+            'source' => 'OpenWeather',
             'temperature' => round($data['main']['temp'], 1),
             'feels_like' => round($data['main']['feels_like'], 1),
             'humidity' => $data['main']['humidity'],

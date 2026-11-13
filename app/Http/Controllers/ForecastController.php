@@ -245,7 +245,7 @@ class ForecastController extends Controller
             }
 
             try {
-                $current = Cache::remember('weather.current', now()->addMinutes(10), fn () => $service->current());
+                $current = Cache::remember('weather.current', now()->addMinutes(5), fn () => $service->current());
             } catch (\Throwable $e) {
                 $error = $e->getMessage();
             }

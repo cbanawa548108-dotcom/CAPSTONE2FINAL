@@ -8,11 +8,11 @@
                     </svg>
                 </div>
                 <div>
-                    <p class="text-[11px] font-bold uppercase tracking-[.14em] text-white/60">Local weather</p>
+                    <p class="text-[11px] font-bold uppercase tracking-[.14em] text-white/60" x-text="'Current conditions · ' + (weather.current?.source || 'weather provider')"></p>
                     <h2 class="mt-1 text-lg font-bold text-white" x-text="city || 'Davao City'"></h2>
                     <p class="mt-1 text-[12px] text-white/65" x-show="loading">Loading latest weather…</p>
                     <p class="mt-1 text-[12px] text-white/65" x-show="error && !loading && !weather.current">Live conditions unavailable</p>
-                    <p class="mt-1 text-[11px] text-white/60" x-show="weather.current?.observed_at" x-text="'Observed ' + weather.current.observed_at"></p>
+                    <p class="mt-1 text-[11px] text-white/60" x-show="weather.current?.observed_at" x-text="'Provider update ' + weather.current.observed_at"></p>
                 </div>
             </div>
 
@@ -30,6 +30,7 @@
                     </div>
                 </div>
             </template>
+            <p class="text-[11px] text-white/70 sm:max-w-44 sm:text-right" x-show="weather.current">Nearby readings may vary by source and location.</p>
             <p class="text-sm text-white/70" x-show="!loading && !weather.current && !error && !forecast.length">No weather data available yet.</p>
         </div>
     </div>
