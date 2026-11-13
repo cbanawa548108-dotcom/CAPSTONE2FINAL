@@ -156,4 +156,10 @@
         <p>This report is system-generated and contains confidential business information.</p>
     </div>
 </body>
+<script>
+    window.addEventListener('load', function () {
+        window.focus();
+        window.print();
+    });
+</script>
 </html>

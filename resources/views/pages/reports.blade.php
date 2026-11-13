@@ -215,6 +215,7 @@ function reportsDataController() {
     const arrow = (c) => (c === null || c === undefined) ? '—' : (c >= 0 ? '▲ ' : '▼ ') + num(Math.abs(c), 1) + '%';
     const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
     const kilo = (v) => '₱' + (v / 1000).toFixed(0) + 'k';
+    const reportLogo = @json(asset('images/freshtrack-logo.svg'));
 
     const draw = (id, config) => {
         const el = document.getElementById(id);
@@ -420,26 +421,79 @@ function reportsDataController() {
 
         exportPDF() {
             if (this.tab === 'sales') {
-                // Server-rendered sales report, opened for printing / saving as PDF
                 const w = window.open(`/api/reports/sales/pdf?period=${encodeURIComponent(this.period)}`, '_blank');
-                if (w) setTimeout(() => w.print(), 500);
-                else alert('Please allow popups to generate PDF report');
+                if (!w) alert('Please allow popups to generate PDF report');
             } else {
                 this.printReport();
             }
         },
 
         printReport() {
-            const printDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-            document.body.setAttribute('data-print-date', printDate);
-            document.body.classList.add('printing');
-            setTimeout(() => {
-                window.print();
-                setTimeout(() => {
-                    document.body.classList.remove('printing');
-                    document.body.removeAttribute('data-print-date');
-                }, 1000);
-            }, 250);
+            const m = this.exportModel();
+            if (!m) {
+                alert('Nothing to print yet. Wait for the report to finish loading.');
+                return;
+            }
+
+            const printWindow = window.open('', '_blank');
+            if (!printWindow) {
+                alert('Please allow popups to print the report.');
+                return;
+            }
+
+            const summaryRows = m.summary.map(([label, value]) =>
+                `<tr><th>${esc(label)}</th><td>${esc(value)}</td></tr>`
+            ).join('');
+            const tableHeaders = m.headers.map((header) => `<th>${esc(header)}</th>`).join('');
+            const tableRows = m.rows.length
+                ? m.rows.map((row) => `<tr>${row.map((cell) => `<td>${esc(cell)}</td>`).join('')}</tr>`).join('')
+                : `<tr><td class="empty" colspan="${m.headers.length}">No report data available for this period.</td></tr>`;
+
+            printWindow.document.open();
+            printWindow.document.write(`<!DOCTYPE html>
+                <html lang="en">
+                <head>
+                    <meta charset="utf-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1">
+                    <title>${esc(m.title)} - FreshTrack</title>
+                    <style>
+                        * { box-sizing: border-box; }
+                        body { margin: 14mm; color: #1f2937; font: 12px Arial, sans-serif; }
+                        .report-header { text-align: center; border-bottom: 2px solid #7c3aed; padding-bottom: 12px; margin-bottom: 20px; }
+                        .logo { display: block; width: 170px; height: auto; margin: 0 auto 12px; }
+                        h1 { margin: 0 0 6px; color: #5b21b6; font-size: 22px; }
+                        .meta { color: #6b7280; }
+                        h2 { margin: 18px 0 8px; color: #5b21b6; font-size: 15px; }
+                        table { width: 100%; border-collapse: collapse; margin: 8px 0 18px; }
+                        th, td { padding: 8px; border: 1px solid #d1d5db; text-align: left; vertical-align: top; }
+                        thead th { background: #7c3aed; color: white; }
+                        tbody tr:nth-child(even) { background: #f9fafb; }
+                        .summary th { width: 40%; background: #f5f3ff; color: #374151; }
+                        .empty { color: #6b7280; text-align: center; padding: 20px; }
+                        @page { size: A4; margin: 12mm; }
+                        @media print {
+                            body { margin: 0; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+                            tr, .report-header { break-inside: avoid; }
+                        }
+                    </style>
+                </head>
+                <body>
+                    <header class="report-header">
+                        <img class="logo" src="${esc(reportLogo)}" alt="FreshTrack logo">
+                        <h1>${esc(m.title)}</h1>
+                        <div class="meta">${esc(m.label)} &middot; Generated ${esc(new Date().toLocaleString())}</div>
+                    </header>
+                    <h2>Summary</h2>
+                    <table class="summary"><tbody>${summaryRows}</tbody></table>
+                    <h2>${esc(m.title)} Details</h2>
+                    <table>
+                        <thead><tr>${tableHeaders}</tr></thead>
+                        <tbody>${tableRows}</tbody>
+                    </table>
+                    <script>window.addEventListener('load', function () { window.focus(); window.print(); });<\/script>
+                </body>
+                </html>`);
+            printWindow.document.close();
         },
     };
 }
