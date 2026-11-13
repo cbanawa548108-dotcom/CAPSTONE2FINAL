@@ -27,36 +27,6 @@ class AuthController extends Controller
             'password' => ['required'],
         ]);
 
-        // Debug logging
-        \Log::info('Login attempt', [
-            'email' => $credentials['email'],
-            'password_length' => strlen($credentials['password'])
-        ]);
-
-        // Try to find the user first
-        $user = \App\Models\User::where('email', $credentials['email'])->first();
-        
-        if ($user) {
-            \Log::info('User found', [
-                'email' => $user->email,
-                'role' => $user->role,
-                'has_password' => !empty($user->password)
-            ]);
-            
-            // Check password manually
-            $passwordMatch = \Hash::check($credentials['password'], $user->password);
-            \Log::info('Password check', ['match' => $passwordMatch]);
-            
-            if (!$passwordMatch) {
-                \Log::error('Password mismatch', [
-                    'email' => $user->email,
-                    'hash_prefix' => substr($user->password, 0, 10)
-                ]);
-            }
-        } else {
-            \Log::error('User not found', ['email' => $credentials['email']]);
-        }
-
         // Archived or inactive users cannot sign in
         $attempt = $credentials + ['status' => 'active', 'archived_at' => null];
 
@@ -64,14 +34,10 @@ class AuthController extends Controller
             $request->session()->regenerate();
 
             $user = Auth::user();
-            
-            \Log::info('Login successful', ['email' => $user->email, 'role' => $user->role]);
-            
+
             // Redirect based on role
             return $this->redirectBasedOnRole($user);
         }
-
-        \Log::error('Auth::attempt failed');
 
         throw ValidationException::withMessages([
             'email' => __('The provided credentials do not match our records.'),
