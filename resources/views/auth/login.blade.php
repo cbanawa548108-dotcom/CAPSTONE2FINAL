@@ -126,28 +126,8 @@
             </div>
 
             {{-- Login Form --}}
-            <form method="POST" action="{{ route('login.post') }}" x-data="{ showPass: false, loading: false, activeRole: 0, email: '{{ old('email', 'owner@FreshTrack.ph') }}' }" @submit="loading=true">
+            <form method="POST" action="{{ route('login.post') }}" x-data="{ showPass: false, loading: false, email: @js(old('email', '')) }" @submit="loading=true">
                 @csrf
-
-                {{-- Role selector fills the matching demo email --}}
-                <div class="grid grid-cols-3 gap-3 mb-8 p-1.5 bg-gray-100 rounded-2xl">
-                    @foreach([
-                        ['Owner', 'owner@FreshTrack.ph', 'M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z'],
-                        ['Manager', 'manager@FreshTrack.ph', 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z'],
-                        ['Cashier', 'cashier@FreshTrack.ph', 'M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z']
-                    ] as $i => [$role, $email, $icon])
-                    <button type="button" @click="activeRole={{ $i }}; email='{{ $email }}'"
-                            :class="activeRole==={{ $i }} ? 'bg-white shadow-lg text-green-800 font-bold scale-105 role-active' : 'text-gray-600 hover:text-gray-900'"
-                            class="role-btn flex flex-col items-center gap-2 py-3.5 rounded-xl text-xs font-semibold transition-all">
-                        <div :class="activeRole==={{ $i }} ? 'bg-lime-100' : 'bg-gray-200'" class="w-8 h-8 rounded-lg flex items-center justify-center transition-colors">
-                            <svg class="w-4 h-4" :class="activeRole==={{ $i }} ? 'text-green-800' : 'text-gray-500'" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="{{ $icon }}"/>
-                            </svg>
-                        </div>
-                        {{ $role }}
-                    </button>
-                    @endforeach
-                </div>
 
                 {{-- Validation Errors --}}
                 @if ($errors->any())
@@ -183,7 +163,7 @@
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
                             </svg>
                         </span>
-                        <input :type="showPass ? 'text' : 'password'" name="password" value="password" required class="inp" style="padding-right:52px">
+                        <input :type="showPass ? 'text' : 'password'" name="password" required class="inp" style="padding-right:52px" autocomplete="current-password">
                         <button type="button" @click="showPass=!showPass" class="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-green-800 transition-colors p-1 rounded-lg hover:bg-green-50">
                             <svg x-show="!showPass" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
@@ -221,39 +201,6 @@
                 </button>
             </form>
 
-            {{-- Demo credentials --}}
-            <div class="bg-gradient-to-br from-[#F4F7EE] via-white to-[#EDF5E7] rounded-2xl p-5 border-2 border-[#DCE8D2] shadow-lg">
-                <div class="flex items-center gap-2.5 mb-4">
-                    <svg class="w-5 h-5 text-green-800" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/>
-                    </svg>
-                    <p class="text-sm font-black text-gray-800">Demo Credentials</p>
-                    <span class="ml-auto text-xs bg-[#183522] text-white font-bold px-3 py-1 rounded-full shadow-sm">Prototype</span>
-                </div>
-                <div class="grid grid-cols-3 gap-3 text-xs mb-4">
-                    @foreach([
-                        ['Owner', 'owner@FreshTrack.ph', 'Full access', 'M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z', 'text-green-800', 'bg-lime-100'],
-                        ['Manager', 'manager@FreshTrack.ph', 'Limited', 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', 'text-green-800', 'bg-lime-100'],
-                        ['Cashier', 'cashier@FreshTrack.ph', 'Sales only', 'M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z', 'text-green-800', 'bg-lime-100']
-                    ] as [$r, $e, $a, $icon, $color, $bg])
-                    <div class="bg-white rounded-xl p-3 border border-[#DCE8D2] text-center hover:shadow-md transition-shadow">
-                        <div class="w-10 h-10 {{ $bg }} rounded-xl flex items-center justify-center mx-auto mb-2">
-                            <svg class="w-5 h-5 {{ $color }}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="{{ $icon }}"/>
-                            </svg>
-                        </div>
-                        <p class="font-bold text-gray-800 text-xs mb-1">{{ $r }}</p>
-                        <p class="text-green-800 font-mono text-[10px] mb-1 break-all">{{ $e }}</p>
-                        <p class="text-gray-500 text-[10px] font-medium">{{ $a }}</p>
-                    </div>
-                    @endforeach
-                </div>
-                <div class="bg-white/80 backdrop-blur-sm rounded-xl p-3 border border-[#DCE8D2]">
-                    <p class="text-center text-xs text-gray-600 font-medium">
-                        All accounts use password: <span class="font-mono font-black text-green-900 bg-lime-100 px-2 py-0.5 rounded">password</span>
-                    </p>
-                </div>
-            </div>
         </div>
     </div>
 </div>

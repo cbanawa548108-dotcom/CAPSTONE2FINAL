@@ -93,6 +93,19 @@ class AuthenticationTest extends TestCase
         $this->get('/test-auth')->assertNotFound();
     }
 
+    public function test_login_page_does_not_expose_demo_credentials(): void
+    {
+        $response = $this->get(route('login'));
+
+        $response->assertOk()
+            ->assertDontSee('owner@FreshTrack.ph')
+            ->assertDontSee('manager@FreshTrack.ph')
+            ->assertDontSee('cashier@FreshTrack.ph')
+            ->assertDontSee('Demo credentials')
+            ->assertDontSee('All accounts use password')
+            ->assertDontSee('value="password"', false);
+    }
+
     private function createUser(string $role, string $status = 'active'): User
     {
         return User::create([
