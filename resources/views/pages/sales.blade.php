@@ -1,7 +1,7 @@
 ﻿<x-app-layout>
 <x-slot name="title">Sales — FreshTrack</x-slot>
 
-<div x-data="salesData()" x-init="init()">
+<div x-data="salesData('{{ $selectedDate }}')" x-init="init()">
 
 <meta name="csrf-token" content="{{ csrf_token() }}">
 
@@ -12,11 +12,11 @@
         <p class="text-[13.5px] text-gray-500 mt-0.5">Track, manage and analyze all fruit sales · {{ now($timezone)->format('F Y') }}</p>
     </div>
     <div class="flex items-center gap-3">
-        <button class="btn btn-outline btn-md text-[13px]">
+        <button @click="exportPDF()" class="btn btn-outline btn-md text-[13px]">
             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
             Export PDF
         </button>
-        <button class="btn btn-outline btn-md text-[13px]">
+        <button @click="exportCSV()" class="btn btn-outline btn-md text-[13px]">
             <svg class="w-4 h-4 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
             Export CSV
         </button>
@@ -350,8 +350,9 @@
 
 
 <script>
-function salesData() {
+function salesData(selectedDate) {
     return {
+        selectedDate: selectedDate,
         addModal: false,
         products: [],
         selectedProductId: '',
@@ -362,6 +363,19 @@ function salesData() {
         cart: [],
         paymentMethod: 'cash',
         notes: '',
+
+        exportPDF() {
+            const url = `/api/sales/export/pdf?date=${encodeURIComponent(this.selectedDate)}`;
+            const printWindow = window.open(url, '_blank');
+
+            if (!printWindow) {
+                alert('Please allow pop-ups to print the sales report.');
+            }
+        },
+
+        exportCSV() {
+            window.location.assign(`/api/sales/export/csv?date=${encodeURIComponent(this.selectedDate)}`);
+        },
         
         init() {
             this.loadProducts();

@@ -127,6 +127,8 @@ Route::prefix('api')->middleware(['auth'])->group(function () {
         Route::get('/sales', [\App\Http\Controllers\SalesController::class, 'index'])->name('api.sales.index');
         Route::get('/sales/stats', [\App\Http\Controllers\SalesController::class, 'getStats'])->name('api.sales.stats');
         Route::get('/sales/daily', [\App\Http\Controllers\SalesController::class, 'getDailySales'])->name('api.sales.daily');
+        Route::get('/sales/export/pdf', [\App\Http\Controllers\SalesController::class, 'exportPDF'])->name('api.sales.export.pdf');
+        Route::get('/sales/export/csv', [\App\Http\Controllers\SalesController::class, 'exportCSV'])->name('api.sales.export.csv');
         
         // Reports API
         Route::get('/reports/sales', [\App\Http\Controllers\ReportsController::class, 'salesReport'])->name('api.reports.sales');

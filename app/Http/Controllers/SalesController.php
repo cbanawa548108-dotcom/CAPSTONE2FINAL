@@ -86,6 +86,111 @@ class SalesController extends Controller
             'selectedDate' => $selectedDate->toDateString(),
         ]);
     }
+
+    /**
+     * Open a printable sales transaction report for the selected business date.
+     */
+    public function exportPDF(Request $request)
+    {
+        $data = $this->salesExportData($request);
+
+        return response()
+            ->view('pages.sales-export-pdf', $data)
+            ->header('Content-Type', 'text/html; charset=UTF-8');
+    }
+
+    /**
+     * Download every sales transaction and line item for the selected business date.
+     */
+    public function exportCSV(Request $request)
+    {
+        $data = $this->salesExportData($request);
+        $filename = 'sales-transactions-' . $data['selectedDate']->toDateString() . '.csv';
+
+        return response()->streamDownload(function () use ($data) {
+            $output = fopen('php://output', 'w');
+            if ($output === false) {
+                throw new \RuntimeException('Unable to open CSV output stream.');
+            }
+
+            fwrite($output, "\xEF\xBB\xBF");
+            fputcsv($output, [
+                'Transaction ID',
+                'Fruit',
+                'Quantity',
+                'Unit',
+                'Unit Price',
+                'Transaction Total',
+                'Cashier',
+                'Date & Time',
+                'Status',
+            ]);
+
+            foreach ($data['sales'] as $sale) {
+                $saleItems = $sale->salesItems;
+                if ($saleItems->isEmpty()) {
+                    fputcsv($output, [
+                        $sale->transaction_code,
+                        'N/A',
+                        '',
+                        '',
+                        '',
+                        $sale->total_amount,
+                        $sale->user?->name ?? 'System',
+                        $sale->created_at->copy()->timezone($data['timezone'])->format('Y-m-d H:i:s'),
+                        ucfirst($sale->status),
+                    ]);
+                    continue;
+                }
+
+                foreach ($saleItems as $saleItem) {
+                    $product = $saleItem->inventoryItem ?? $saleItem->inventoryBatch?->inventoryItem;
+
+                    fputcsv($output, [
+                        $sale->transaction_code,
+                        $product?->name ?? 'N/A',
+                        $saleItem->quantity,
+                        $product?->unit ?? 'kg',
+                        $saleItem->unit_price,
+                        $sale->total_amount,
+                        $sale->user?->name ?? 'System',
+                        $sale->created_at->copy()->timezone($data['timezone'])->format('Y-m-d H:i:s'),
+                        ucfirst($sale->status),
+                    ]);
+                }
+            }
+
+            fclose($output);
+        }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
+    private function salesExportData(Request $request): array
+    {
+        $timezone = OwnerSetting::forUser(Auth::id())->timezone ?: config('app.timezone');
+        $validated = $request->validate([
+            'date' => ['nullable', 'date_format:Y-m-d'],
+        ]);
+        $selectedDate = isset($validated['date'])
+            ? Carbon::createFromFormat('Y-m-d', $validated['date'], $timezone)
+            : Carbon::now($timezone);
+        $dayStart = $selectedDate->copy()->startOfDay()->utc();
+        $nextDayStart = $dayStart->copy()->addDay();
+
+        $sales = SalesTransaction::with([
+            'salesItems.inventoryItem',
+            'salesItems.inventoryBatch.inventoryItem',
+            'user',
+        ])
+            ->where('payment_method', '!=', 'adjustment')
+            ->where('type', 'sale')
+            ->where('created_at', '>=', $dayStart)
+            ->where('created_at', '<', $nextDayStart)
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->get();
+
+        return compact('sales', 'selectedDate', 'timezone');
+    }
     
     /**
      * Get sales list (API).
