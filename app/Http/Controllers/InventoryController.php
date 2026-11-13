@@ -243,6 +243,95 @@ class InventoryController extends Controller
             'historyRecords' => $historyRecords,
         ]);
     }
+
+    /**
+     * Download all inventory items and their batches as CSV.
+     */
+    public function exportCSV()
+    {
+        $inventoryItems = InventoryItem::with('batches')->orderBy('name')->get();
+        $filename = 'inventory-' . now()->toDateString() . '.csv';
+
+        return response()->streamDownload(function () use ($inventoryItems) {
+            $output = fopen('php://output', 'w');
+            if ($output === false) {
+                throw new \RuntimeException('Unable to open CSV output stream.');
+            }
+
+            $safeText = static function ($value): string {
+                $text = (string) ($value ?? '');
+
+                return preg_match('/^[=+\-@]/', $text) ? "'" . $text : $text;
+            };
+
+            fwrite($output, "\xEF\xBB\xBF");
+            fputcsv($output, [
+                'Product',
+                'Category',
+                'Unit',
+                'Total Stock',
+                'Reorder Level',
+                'Stock Status',
+                'Product Status',
+                'Batch Code',
+                'Batch Stock',
+                'Batch Status',
+                'Unit Price',
+                'Supplier',
+                'Received Date',
+                'Expiry Date',
+            ]);
+
+            foreach ($inventoryItems as $item) {
+                $stock = (float) $item->stock_quantity;
+                $stockStatus = $stock <= 0
+                    ? 'Out of Stock'
+                    : ($stock <= (float) $item->reorder_level ? 'Low Stock' : 'Available');
+                $batches = $item->batches;
+
+                if ($batches->isEmpty()) {
+                    fputcsv($output, [
+                        $safeText($item->name),
+                        $safeText($item->category),
+                        $safeText($item->unit),
+                        $item->stock_quantity,
+                        $item->reorder_level,
+                        $stockStatus,
+                        $safeText($item->status),
+                        '',
+                        '',
+                        '',
+                        '',
+                        '',
+                        '',
+                        '',
+                    ]);
+                    continue;
+                }
+
+                foreach ($batches as $batch) {
+                    fputcsv($output, [
+                        $safeText($item->name),
+                        $safeText($item->category),
+                        $safeText($item->unit),
+                        $item->stock_quantity,
+                        $item->reorder_level,
+                        $stockStatus,
+                        $safeText($item->status),
+                        $safeText($batch->batch_code),
+                        $batch->quantity,
+                        $safeText($batch->status),
+                        $batch->price_per_unit,
+                        $safeText($batch->supplier),
+                        $batch->received_date?->toDateString() ?? '',
+                        $batch->expiry_date?->toDateString() ?? '',
+                    ]);
+                }
+            }
+
+            fclose($output);
+        }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
     
     /**
      * Get all inventory items with batches (API).

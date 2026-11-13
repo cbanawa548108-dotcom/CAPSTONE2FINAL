@@ -116,6 +116,7 @@ Route::prefix('api')->middleware(['auth'])->group(function () {
         
         // Inventory API
         Route::get('/inventory', [\App\Http\Controllers\InventoryController::class, 'index'])->name('api.inventory.index');
+        Route::get('/inventory/export/csv', [\App\Http\Controllers\InventoryController::class, 'exportCSV'])->name('api.inventory.export.csv');
         Route::post('/inventory/stock-in', [\App\Http\Controllers\InventoryController::class, 'stockIn'])->name('api.inventory.stock-in');
         Route::post('/inventory/stock-out', [\App\Http\Controllers\InventoryController::class, 'stockOut'])->name('api.inventory.stock-out');
         Route::post('/inventory/stock-adjustment', [\App\Http\Controllers\InventoryController::class, 'stockAdjustment'])->name('api.inventory.stock-adjustment');
