@@ -234,19 +234,33 @@ class ForecastController extends Controller
     {
         $current = null;
         $error = null;
+        $forecastError = null;
         $service = app(WeatherService::class);
 
         if ($service->isConfigured()) {
             try {
-                $current = Cache::remember('weather.current', now()->addMinutes(30), fn () => $service->current());
+                Cache::remember('weather.forecast.sync', now()->addHours(3), fn () => $service->syncForecast());
+            } catch (\Throwable $e) {
+                $forecastError = $e->getMessage();
+            }
+
+            try {
+                $current = Cache::remember('weather.current', now()->addMinutes(10), fn () => $service->current());
             } catch (\Throwable $e) {
                 $error = $e->getMessage();
             }
         } else {
             $error = 'OPENWEATHER_API_KEY is not set';
+            $forecastError = $error;
         }
 
-        $days = WeatherData::where('date', '>=', $today->toDateString())->orderBy('date')->limit(7)->get()
+        $weatherDays = WeatherData::where('date', '>=', $today->toDateString())->orderBy('date')->limit(7)->get();
+        $latestForecast = $weatherDays->where('is_forecast', true)->sortByDesc('updated_at')->first();
+        $forecastUpdatedAt = $latestForecast?->updated_at?->toIso8601String();
+        $forecastSource = $latestForecast?->source;
+        $forecastStale = !$latestForecast || $latestForecast->updated_at->lt(now()->subHours(6));
+
+        $days = $weatherDays
             ->map(fn ($w) => [
                 'date' => $w->date->toDateString(),
                 'label' => $w->date->format('D'),
@@ -256,7 +270,16 @@ class ForecastController extends Controller
                 'condition' => $w->condition,
             ]);
 
-        return ['current' => $current, 'forecast' => $days, 'error' => $error, 'city' => config('services.openweather.city')];
+        return [
+            'current' => $current,
+            'forecast' => $days,
+            'error' => $error,
+            'forecast_error' => $forecastError,
+            'city' => config('services.openweather.city'),
+            'forecast_source' => $forecastSource,
+            'forecast_updated_at' => $forecastUpdatedAt,
+            'forecast_stale' => $forecastStale,
+        ];
     }
 
     private function latestRun(string $model): ?array

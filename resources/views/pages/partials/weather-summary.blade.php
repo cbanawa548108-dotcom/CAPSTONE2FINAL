@@ -11,7 +11,8 @@
                     <p class="text-[11px] font-bold uppercase tracking-[.14em] text-white/60">Local weather</p>
                     <h2 class="mt-1 text-lg font-bold text-white" x-text="city || 'Davao City'"></h2>
                     <p class="mt-1 text-[12px] text-white/65" x-show="loading">Loading latest weather…</p>
-                    <p class="mt-1 text-[12px] text-white/65" x-show="error && !loading" x-text="weather.current ? 'Live conditions unavailable · Showing stored forecast' : 'Live conditions unavailable'"></p>
+                    <p class="mt-1 text-[12px] text-white/65" x-show="error && !loading && !weather.current">Live conditions unavailable</p>
+                    <p class="mt-1 text-[11px] text-white/60" x-show="weather.current?.observed_at" x-text="'Observed ' + weather.current.observed_at"></p>
                 </div>
             </div>
 
@@ -38,17 +39,20 @@
             <span class="h-2 w-2 rounded-full bg-[#84CC16]"></span>
             <p class="text-[12px] font-semibold text-gray-700">Upcoming forecast</p>
             <p class="text-[11px] text-gray-400" x-show="forecast.length" x-text="'· ' + forecast.length + ' days'"></p>
+            <p class="text-[11px] text-gray-400" x-show="weather.forecast_updated_at" x-text="'· ' + (weather.forecast_source || 'Weather provider') + ' · Updated ' + new Date(weather.forecast_updated_at).toLocaleString()"></p>
         </div>
         <div class="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:justify-end">
             <template x-for="day in forecast" :key="day.date">
                 <div class="min-w-[92px] rounded-xl border border-gray-100 bg-gray-50 px-3 py-2 text-center">
                     <p class="text-[10px] font-bold uppercase text-gray-500" x-text="day.label || day.date"></p>
                     <p class="mt-0.5 text-sm font-bold text-gray-900"><span x-text="day.temperature != null ? Math.round(day.temperature) : '—'"></span>°</p>
-                    <p class="text-[10px] text-gray-500"><span x-text="day.humidity != null ? Math.round(day.humidity) : '—'"></span>% RH · <span x-text="day.rainfall != null ? Number(day.rainfall).toFixed(1) : '—'"></span> mm</p>
+                    <p class="text-[10px] capitalize text-gray-500" x-text="day.condition || 'Forecast'"></p>
+                    <p class="text-[10px] text-gray-500"><span x-text="day.humidity != null ? Math.round(day.humidity) : '—'"></span>% RH · <span x-text="day.rainfall != null ? Number(day.rainfall).toFixed(1) : '—'"></span> mm/day</p>
                 </div>
             </template>
             <p class="self-center text-[11px] text-gray-400" x-show="!loading && !forecast.length">Forecast data will appear after a weather sync.</p>
         </div>
+        <p class="mt-2 text-[11px] text-amber-600 sm:mt-0" x-show="weather.forecast_stale || (weather.forecast_error && forecast.length)">Forecast may be outdated. Weather predictions can change; check local advisories for important decisions.</p>
     </div>
 </section>
 
