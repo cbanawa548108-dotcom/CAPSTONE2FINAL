@@ -329,7 +329,8 @@ $kpis2 = [
 </div>
 
 {{-- WEATHER IMPACT --}}
-<div class="card p-6 mb-7 fade-up">
+<div class="grid grid-cols-1 xl:grid-cols-2 gap-5 mb-7 items-start">
+<div class="card p-6 fade-up">
     <div class="flex items-center justify-between mb-5">
         <div class="flex items-center gap-3">
             <div class="w-12 h-12 bg-gradient-to-br from-violet-500 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg">
@@ -350,7 +351,7 @@ $kpis2 = [
         </span>
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
         {{-- Current Weather --}}
         <div class="bg-violet-600 rounded-2xl p-6 text-white shadow-lg">
             <p class="text-[11px] font-bold text-white/80 uppercase tracking-wide mb-3">📍 <span id="wxCity">{{ config('services.openweather.city') }}</span> · <span id="wxStatus">Loading…</span></p>
@@ -424,7 +425,7 @@ $kpis2 = [
         </div>
 
         {{-- Weather Recommendations --}}
-        <div class="space-y-3">
+        <div class="grid grid-cols-1 xl:grid-cols-3 gap-3 lg:col-span-2">
             <div class="bg-gradient-to-br from-purple-50 to-violet-50 rounded-2xl p-4 border-2 border-purple-200">
                 <div class="flex items-center gap-2 mb-2">
                     <svg class="w-4.5 h-4.5 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
@@ -467,26 +468,31 @@ $kpis2 = [
     </div>
 </div>
 
-{{-- CHARTS ROW 1 --}}
-<div class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">
-    {{-- Sales Trend --}}
-    <div class="card p-6 fade-up">
-        <div class="flex items-center justify-between mb-5">
-            <div>
-                <h3 class="font-bold text-gray-900 text-[15px]">Sales Revenue Trend</h3>
-                <p class="text-[12px] text-gray-400 mt-0.5" id="trendSub">Daily revenue — last 14 days</p>
-            </div>
-            <div class="flex gap-1 bg-gray-100 rounded-xl p-1">
-                @foreach(['7D','14D','30D'] as $i => $p)
-                <button data-range="{{ (int) $p }}" class="trend-range text-[12px] font-semibold px-3 py-1.5 rounded-lg transition-all {{ $i===1 ? 'bg-white text-violet-700 shadow-sm' : 'text-gray-400 hover:text-gray-700' }}">{{ $p }}</button>
-                @endforeach
-            </div>
+<div class="card p-6 fade-up">
+    <div class="flex items-center justify-between mb-5">
+        <div>
+            <h3 class="font-bold text-gray-900 text-[15px]">Sales Revenue Trend</h3>
+            <p class="text-[12px] text-gray-400 mt-0.5" id="trendSub">Daily revenue — last 14 days</p>
         </div>
-        <div style="height: 180px;">
-            <canvas id="salesChart"></canvas>
+        <div class="flex gap-1 bg-gray-100 rounded-xl p-1">
+            @foreach(['7D','14D','30D'] as $i => $p)
+            <button data-range="{{ (int) $p }}" class="trend-range text-[12px] font-semibold px-3 py-1.5 rounded-lg transition-all {{ $i===1 ? 'bg-white text-violet-700 shadow-sm' : 'text-gray-400 hover:text-gray-700' }}">{{ $p }}</button>
+            @endforeach
         </div>
     </div>
+    <div style="height: 180px;">
+        <canvas id="salesChart"></canvas>
+    </div>
+</div>
+</div>
 
+{{-- BUSINESS INSIGHTS --}}
+<section class="mb-7">
+<div class="mb-4">
+    <h2 class="text-[18px] font-black text-gray-900">Insights</h2>
+    <p class="text-[12px] text-gray-400 mt-0.5">Inventory and sales performance at a glance</p>
+</div>
+<div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5">
     {{-- Inventory Distribution --}}
     <div class="card p-6 fade-up">
         <h3 class="font-bold text-gray-900 text-[15px] mb-1">Inventory Distribution</h3>
@@ -510,10 +516,6 @@ $kpis2 = [
             </div>
         </div>
     </div>
-</div>
-
-{{-- CHARTS ROW 2 --}}
-<div class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-7">
     <div class="card p-6 fade-up">
         <h3 class="font-bold text-gray-900 text-[15px] mb-1">Forecast vs Actual Sales</h3>
         <p class="text-[12px] text-gray-400 mb-4">Weekly comparison — last 5 weeks</p>
@@ -529,6 +531,7 @@ $kpis2 = [
         </div>
     </div>
 </div>
+</section>
 
 {{-- BOTTOM: Transactions + Top Sellers --}}
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-7">
