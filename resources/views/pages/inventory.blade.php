@@ -1,4 +1,4 @@
-﻿<x-app-layout>
+<x-app-layout>
 <x-slot name="title">Inventory — FreshTrack</x-slot>
 
 <script>
@@ -23,7 +23,6 @@ function inventoryData() {
     historyDateTo: '',
     stockInStep: 1,
     stockInItems: [],
-    stockInNotes: '',
     itemsPerPage: 5,
     currentPage: 1,
     
@@ -620,7 +619,6 @@ function inventoryData() {
                 supplier: this.supplier,
                 received_date: this.dateReceived,
                 reference_number: this.referenceNumber,
-                notes: this.stockInNotes,
                 items: mappedItems
             };
 
@@ -645,7 +643,6 @@ function inventoryData() {
                     self.supplier = '';
                     self.dateReceived = new Date().toISOString().split('T')[0];
                     self.referenceNumber = '';
-                    self.stockInNotes = '';
                     self.stockInStep = 1;
                     self.stockInModal = false;
                     
@@ -688,7 +685,6 @@ function inventoryData() {
         this.supplier = '';
         this.dateReceived = new Date().toISOString().split('T')[0];
         this.referenceNumber = '';
-        this.stockInNotes = '';
     },
     
     saveProduct() {
@@ -1329,7 +1325,7 @@ $fruitIconPath = 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 
                 <h2 class="text-sm font-bold text-gray-900">Incoming batches</h2>
                 <p class="mt-0.5 text-[11px] text-gray-500">Most recently recorded stock receipts</p>
             </div>
-            <span class="w-fit rounded-full bg-gray-100 px-3 py-1 text-[11px] font-bold text-gray-600">{{ isset($stockInRecords) ? count($stockInRecords) : 0 }} {{ isset($stockInRecords) && count($stockInRecords) === 1 ? 'transaction' : 'transactions' }}</span>
+            <span class="w-fit rounded-full bg-gray-100 px-3 py-1 text-[11px] font-bold text-gray-600">{{ isset($stockInRecords) ? count($stockInRecords) : 0 }} {{ isset($stockInRecords) && count($stockInRecords) === 1 ? 'record' : 'records' }}</span>
         </div>
         <div class="space-y-3 p-4 sm:p-5">
             @if(isset($stockInRecords) && count($stockInRecords) > 0)
@@ -1343,40 +1339,30 @@ $fruitIconPath = 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 
                     </div>
                     <div class="min-w-0 flex-1">
                         <div class="flex flex-wrap items-center gap-2">
-                            <p class="text-sm font-bold text-gray-900">{{ $stockIn['product_label'] }}</p>
-                            <span class="rounded-md bg-gray-100 px-2 py-1 font-mono text-[10px] font-semibold text-gray-600">{{ $stockIn['reference'] }}</span>
+                            <p class="text-sm font-bold text-gray-900">{{ $stockIn[1] }}</p>
+                            <span class="rounded-md bg-gray-100 px-2 py-1 font-mono text-[10px] font-semibold text-gray-600">{{ $stockIn[0] }}</span>
                         </div>
                         <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5">
                             <p class="flex items-center gap-1.5 text-[11px] text-gray-500">
                                 <svg class="h-3.5 w-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2m12-13a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
-                                <span>{{ $stockIn['supplier'] }}</span>
+                                <span>{{ $stockIn[3] }}</span>
                             </p>
                             <p class="flex items-center gap-1.5 text-[11px] text-gray-500">
                                 <svg class="h-3.5 w-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 5h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2z"/></svg>
-                                <span>{{ $stockIn['date'] }}</span>
+                                <span>{{ $stockIn[4] }}</span>
                             </p>
                         </div>
-                        @if(count($stockIn['items']) > 1)
-                        <div class="mt-3 space-y-1.5 border-t border-gray-200 pt-3">
-                            @foreach($stockIn['items'] as $stockInItem)
-                            <div class="flex flex-wrap items-center justify-between gap-2 text-[11px] text-gray-600">
-                                <span class="font-semibold text-gray-700">{{ $stockInItem['product'] }}</span>
-                                <span>{{ $stockInItem['quantity'] }} · {{ $stockInItem['batch_code'] }}</span>
-                            </div>
-                            @endforeach
-                        </div>
-                        @endif
                     </div>
                 </div>
                 <div class="flex items-center justify-between gap-4 border-t border-gray-100 pt-3 sm:justify-end sm:border-0 sm:pt-0">
                     <div class="text-left sm:min-w-24 sm:text-right">
-                        <p class="text-base font-black leading-tight text-gray-900">{{ $stockIn['quantity'] }}</p>
-                        <p class="mt-1 text-xs font-semibold text-gray-600">{{ $stockIn['total'] }}</p>
+                        <p class="text-base font-black leading-tight text-gray-900">{{ $stockIn[2] }}</p>
+                        <p class="mt-1 text-xs font-semibold text-gray-600">{{ $stockIn[5] }}</p>
                     </div>
                     <div class="sm:min-w-20 sm:text-right">
                         <span class="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-1 text-[10px] font-bold text-gray-600">
                             <span class="h-1.5 w-1.5 rounded-full bg-gray-400"></span>
-                            {{ $stockIn['status'] }}
+                            {{ $stockIn[6] }}
                         </span>
                     </div>
                 </div>
@@ -1845,10 +1831,6 @@ $fruitIconPath = 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 
                         </div>
                     </div>
                     
-                    <div>
-                        <label class="inp-label">Notes (Optional)</label>
-                        <textarea x-model="stockInNotes" rows="3" placeholder="Delivery notes, quality observations, special conditions..." class="inp"></textarea>
-                    </div>
                 </div>
             </div>
             
