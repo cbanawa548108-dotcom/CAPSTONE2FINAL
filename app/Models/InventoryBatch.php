@@ -24,6 +24,7 @@ class InventoryBatch extends Model
      */
     protected $fillable = [
         'inventory_item_id',
+        'stock_in_transaction_id',
         'batch_code',
         'quantity',
         'initial_quantity',
@@ -52,6 +53,11 @@ class InventoryBatch extends Model
     public function inventoryItem()
     {
         return $this->belongsTo(InventoryItem::class, 'inventory_item_id');
+    }
+
+    public function stockInTransaction()
+    {
+        return $this->belongsTo(StockInTransaction::class);
     }
 
     /**

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\InventoryItem;
 use App\Models\InventoryBatch;
+use App\Models\StockInTransaction;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
@@ -95,25 +96,68 @@ class InventoryController extends Controller
             ];
         }
 
-        // Get Stock In Records (recent batches received)
-        $stockInRecords = InventoryBatch::with('inventoryItem')
+        // Show each receipt once, with all of its product batches.
+        $stockInRecords = StockInTransaction::with('batches.inventoryItem')
+            ->whereHas('batches')
+            ->orderBy('received_date', 'desc')
+            ->orderBy('created_at', 'desc')
+            ->take(20)
+            ->get()
+            ->map(function ($transaction) {
+                $batches = $transaction->batches;
+                $items = $batches->map(function ($batch) {
+                    return [
+                        'product' => $batch->inventoryItem->name ?? 'Unknown',
+                        'batch_code' => $batch->batch_code,
+                        'quantity' => number_format($batch->initial_quantity ?? $batch->quantity, 2) . ' kg',
+                        'total' => $batch->price_per_unit * ($batch->initial_quantity ?? $batch->quantity),
+                    ];
+                })->values();
+
+                return [
+                    'reference' => $transaction->reference_number ?? 'SI-' . $transaction->id,
+                    'product_label' => $items->count() === 1 ? $items[0]['product'] : $items->count() . ' products',
+                    'items' => $items,
+                    'quantity' => number_format($batches->sum(fn ($batch) => $batch->initial_quantity ?? $batch->quantity), 2) . ' kg',
+                    'supplier' => $transaction->supplier,
+                    'date' => $transaction->received_date?->format('M d, Y') ?? 'N/A',
+                    'total' => '₱' . number_format($items->sum('total'), 2),
+                    'status' => 'Received',
+                    'timestamp' => $transaction->created_at?->timestamp ?? ($transaction->received_date?->timestamp ?? 0),
+                ];
+            });
+
+        // Keep pre-transaction stock receipts visible as individual records.
+        $legacyStockInRecords = InventoryBatch::with('inventoryItem')
+            ->whereNull('stock_in_transaction_id')
             ->orderBy('received_date', 'desc')
             ->orderBy('created_at', 'desc')
             ->take(20)
             ->get()
             ->map(function($batch) {
+                $quantity = $batch->initial_quantity ?? $batch->quantity;
+
                 return [
-                    $batch->batch_code, // 0: batch_code
-                    $batch->inventoryItem->name ?? 'Unknown', // 1: product_name
-                    number_format($batch->initial_quantity ?? $batch->quantity, 0) . ' kg', // 2: quantity received
-                    $batch->supplier ?? 'N/A', // 3: supplier
-                    $batch->received_date ? $batch->received_date->format('M d, Y') : 'N/A', // 4: date
-                    '₱' . number_format($batch->quantity * $batch->price_per_unit, 2), // 5: total_value
-                    'Received', // 6: status
-                    $batch->received_date ? $batch->received_date->format('Y-m-d') : '', // 7: date filter
-                    $batch->created_at?->timestamp ?? ($batch->received_date?->timestamp ?? 0), // 8: sort timestamp
+                    'reference' => $batch->batch_code,
+                    'product_label' => $batch->inventoryItem->name ?? 'Unknown',
+                    'items' => [[
+                        'product' => $batch->inventoryItem->name ?? 'Unknown',
+                        'batch_code' => $batch->batch_code,
+                        'quantity' => number_format($quantity, 2) . ' kg',
+                        'total' => $quantity * $batch->price_per_unit,
+                    ]],
+                    'quantity' => number_format($quantity, 2) . ' kg',
+                    'supplier' => $batch->supplier ?? 'N/A',
+                    'date' => $batch->received_date ? $batch->received_date->format('M d, Y') : 'N/A',
+                    'total' => '₱' . number_format($quantity * $batch->price_per_unit, 2),
+                    'status' => 'Received',
+                    'timestamp' => $batch->created_at?->timestamp ?? ($batch->received_date?->timestamp ?? 0),
                 ];
             });
+        $stockInRecords = $stockInRecords->concat($legacyStockInRecords)
+            ->sortByDesc('timestamp')
+            ->take(20)
+            ->values();
 
         // Get Stock Out Records (from sales transactions)
         $stockOutRecords = \App\Models\SalesTransaction::with('salesItems.inventoryBatch.inventoryItem')
@@ -506,10 +550,18 @@ class InventoryController extends Controller
             'supplier' => 'nullable|string',
             'received_date' => 'required|date',
             'reference_number' => 'nullable|string',
+            'notes' => 'nullable|string',
         ]);
 
         DB::beginTransaction();
         try {
+            $transaction = StockInTransaction::create([
+                'reference_number' => $validated['reference_number'] ?? null,
+                'supplier' => $validated['supplier'] ?? $validated['items'][0]['supplier'],
+                'received_date' => $validated['received_date'],
+                'notes' => $validated['notes'] ?? null,
+            ]);
+
             foreach ($validated['items'] as $itemData) {
                 // Find or create inventory item
                 if (!empty($itemData['product_id'])) {
@@ -531,6 +583,7 @@ class InventoryController extends Controller
                 // Create batch
                 $batch = InventoryBatch::create([
                     'inventory_item_id' => $inventoryItem->id,
+                    'stock_in_transaction_id' => $transaction->id,
                     'batch_code' => $itemData['batch_code'],
                     'quantity' => $itemData['quantity'],
                     'initial_quantity' => $itemData['quantity'],
@@ -553,7 +606,8 @@ class InventoryController extends Controller
                 'message' => 'Stock added successfully',
                 'data' => [
                     'reference_number' => $validated['reference_number'] ?? 'N/A',
-                    'items_count' => count($validated['items'])
+                    'items_count' => count($validated['items']),
+                    'transaction_id' => $transaction->id,
                 ]
             ]);
         } catch (\Exception $e) {
