@@ -7,6 +7,7 @@ use App\Models\InventoryBatch;
 use App\Models\StockInTransaction;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Carbon\Carbon;
 
 class InventoryController extends Controller
@@ -96,40 +97,45 @@ class InventoryController extends Controller
             ];
         }
 
-        // Show each receipt once, with all of its product batches.
-        $stockInRecords = StockInTransaction::with('batches.inventoryItem')
-            ->whereHas('batches')
-            ->orderBy('received_date', 'desc')
-            ->orderBy('created_at', 'desc')
-            ->take(20)
-            ->get()
-            ->map(function ($transaction) {
-                $batches = $transaction->batches;
-                $items = $batches->map(function ($batch) {
-                    return [
-                        'product' => $batch->inventoryItem->name ?? 'Unknown',
-                        'batch_code' => $batch->batch_code,
-                        'quantity' => number_format($batch->initial_quantity ?? $batch->quantity, 2) . ' kg',
-                        'total' => $batch->price_per_unit * ($batch->initial_quantity ?? $batch->quantity),
-                    ];
-                })->values();
+        $stockInSchemaReady = Schema::hasTable('stock_in_transactions')
+            && Schema::hasColumn('inventory_batches', 'stock_in_transaction_id');
 
-                return [
-                    'reference' => $transaction->reference_number ?? 'SI-' . $transaction->id,
-                    'product_label' => $items->count() === 1 ? $items[0]['product'] : $items->count() . ' products',
-                    'items' => $items,
-                    'quantity' => number_format($batches->sum(fn ($batch) => $batch->initial_quantity ?? $batch->quantity), 2) . ' kg',
-                    'supplier' => $transaction->supplier,
-                    'date' => $transaction->received_date?->format('M d, Y') ?? 'N/A',
-                    'total' => '₱' . number_format($items->sum('total'), 2),
-                    'status' => 'Received',
-                    'timestamp' => $transaction->created_at?->timestamp ?? ($transaction->received_date?->timestamp ?? 0),
-                ];
-            });
+        // Show each receipt once, with all of its product batches.
+        $stockInRecords = $stockInSchemaReady
+            ? StockInTransaction::with('batches.inventoryItem')
+                ->whereHas('batches')
+                ->orderBy('received_date', 'desc')
+                ->orderBy('created_at', 'desc')
+                ->take(20)
+                ->get()
+                ->map(function ($transaction) {
+                    $batches = $transaction->batches;
+                    $items = $batches->map(function ($batch) {
+                        return [
+                            'product' => $batch->inventoryItem->name ?? 'Unknown',
+                            'batch_code' => $batch->batch_code,
+                            'quantity' => number_format($batch->initial_quantity ?? $batch->quantity, 2) . ' kg',
+                            'total' => $batch->price_per_unit * ($batch->initial_quantity ?? $batch->quantity),
+                        ];
+                    })->values();
+
+                    return [
+                        'reference' => $transaction->reference_number ?? 'SI-' . $transaction->id,
+                        'product_label' => $items->count() === 1 ? $items[0]['product'] : $items->count() . ' products',
+                        'items' => $items,
+                        'quantity' => number_format($batches->sum(fn ($batch) => $batch->initial_quantity ?? $batch->quantity), 2) . ' kg',
+                        'supplier' => $transaction->supplier,
+                        'date' => $transaction->received_date?->format('M d, Y') ?? 'N/A',
+                        'total' => '₱' . number_format($items->sum('total'), 2),
+                        'status' => 'Received',
+                        'timestamp' => $transaction->created_at?->timestamp ?? ($transaction->received_date?->timestamp ?? 0),
+                    ];
+                })
+            : collect();
 
         // Keep pre-transaction stock receipts visible as individual records.
         $legacyStockInRecords = InventoryBatch::with('inventoryItem')
-            ->whereNull('stock_in_transaction_id')
+            ->when($stockInSchemaReady, fn ($query) => $query->whereNull('stock_in_transaction_id'))
             ->orderBy('received_date', 'desc')
             ->orderBy('created_at', 'desc')
             ->take(20)
@@ -538,6 +544,14 @@ class InventoryController extends Controller
      */
     public function stockIn(Request $request)
     {
+        if (!Schema::hasTable('stock_in_transactions')
+            || !Schema::hasColumn('inventory_batches', 'stock_in_transaction_id')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'The Stock In database migration is pending. Please contact the administrator to finish deployment.',
+            ], 503);
+        }
+
         $validated = $request->validate([
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'nullable|exists:inventory_items,id',

@@ -102,4 +102,14 @@ class StockInTransactionTest extends TestCase
             $transaction->batches->pluck('inventory_item_id')->sort()->values()->all()
         );
     }
+
+    public function test_stock_in_returns_a_clear_error_when_its_migration_is_pending(): void
+    {
+        Schema::drop('stock_in_transactions');
+
+        $response = app(InventoryController::class)->stockIn(Request::create('/api/inventory/stock-in', 'POST'));
+
+        $this->assertSame(503, $response->getStatusCode());
+        $this->assertStringContainsString('migration is pending', $response->getData()->message);
+    }
 }
