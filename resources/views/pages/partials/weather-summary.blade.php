@@ -1,8 +1,8 @@
 <section class="card overflow-hidden mb-6" x-data="weatherSummary()" x-init="load()" aria-label="Weather summary">
-    <div class="bg-gradient-to-r from-[#102B21] via-[#153B2C] to-[#1F4D37] px-5 py-5 sm:px-6">
+    <div class="px-5 py-5 sm:px-6" style="background: linear-gradient(90deg, var(--brand-600), var(--brand-700))">
         <div class="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
             <div class="flex items-center gap-4">
-                <div class="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-2xl bg-white/10 text-[#C9F27A]">
+                <div class="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-2xl bg-white/10 text-white">
                     <svg class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M20 15.5A4.5 4.5 0 0015.5 11H15a7 7 0 10-13.8 1.6A4 4 0 004 20h11a5 5 0 005-4.5zM8 3v1m8-1v1M3 8h1m16 0h1"/>
                     </svg>
@@ -20,7 +20,7 @@
                 <div class="flex items-center gap-5 sm:justify-end">
                     <div class="text-right">
                         <p class="text-4xl font-black leading-none text-white"><span x-text="Math.round(weather.current.temperature)"></span><span class="text-2xl">°C</span></p>
-                        <p class="mt-2 text-sm capitalize text-[#C9F27A]" x-text="weather.current.description || weather.current.condition || 'Current conditions'"></p>
+                        <p class="mt-2 text-sm capitalize text-white/90" x-text="weather.current.description || weather.current.condition || 'Current conditions'"></p>
                     </div>
                     <div class="hidden h-12 w-px bg-white/20 sm:block"></div>
                     <div class="space-y-1.5 text-[11px] text-white/75">
@@ -37,7 +37,7 @@
 
     <div class="flex flex-col gap-3 bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
         <div class="flex items-center gap-2">
-            <span class="h-2 w-2 rounded-full bg-[#84CC16]"></span>
+            <span class="h-2 w-2 rounded-full" style="background-color: var(--brand-600)"></span>
             <p class="text-[12px] font-semibold text-gray-700">Upcoming forecast</p>
             <p class="text-[11px] text-gray-400" x-show="forecast.length" x-text="'· ' + forecast.length + ' days'"></p>
             <p class="text-[11px] text-gray-400" x-show="weather.forecast_updated_at" x-text="'· ' + (weather.forecast_source || 'Weather provider') + ' · Updated ' + new Date(weather.forecast_updated_at).toLocaleString()"></p>

@@ -72,15 +72,18 @@ function inventoryData() {
         shelfLife: 0
     },
     
-    // Product shelf life data (in days)
+    // Suggested shelf life in days; adjust for each batch's ripeness and storage conditions.
     productShelfLife: {
-        'Mango': 14,
-        'Durian': 7,
-        'Pomelo': 21,
-        'Mangosteen': 14,
-        'Lanzones': 10,
-        'Banana': 7,
-        'Pineapple': 14
+        'mango': 6,
+        'banana': 7,
+        'pineapple': 8,
+        'papaya': 5,
+        'durian': 4,
+        'lanzones': 5,
+        'mangosteen': 6,
+        'pomelo': 14,
+        'watermelon': 10,
+        'rambutan': 4
     },
 
     matchesProduct(name, category, stock, reorderLevel) {
@@ -173,7 +176,8 @@ function inventoryData() {
     },
     
     getShelfLifeForProduct(productName) {
-        return this.productShelfLife[productName] || 14;
+        const key = String(productName || '').trim().toLowerCase();
+        return this.productShelfLife[key] || 14;
     },
     
     updateProductSKU() {
@@ -197,8 +201,8 @@ function inventoryData() {
         return `SI-${year}${month}-${random}`;
     },
     
-    calculateDates(product, dateReceived) {
-        const shelfLife = this.productShelfLife[product] || 14;
+    calculateDates(product, dateReceived, shelfLifeDays) {
+        const shelfLife = Math.max(1, parseInt(shelfLifeDays, 10) || this.getShelfLifeForProduct(product));
         const received = new Date(dateReceived);
         const expiration = new Date(received);
         expiration.setDate(expiration.getDate() + shelfLife);
@@ -210,8 +214,10 @@ function inventoryData() {
     },
     
     addStockItem() {
-        if (this.currentItem.product && this.currentItem.quantity > 0 && this.currentItem.unitCost > 0) {
-            const dates = this.calculateDates(this.currentItem.product, this.dateReceived);
+        const shelfLifeDays = Number(this.currentItem.shelfLife);
+        if (this.currentItem.product && this.currentItem.quantity > 0 && this.currentItem.unitCost > 0
+            && Number.isInteger(shelfLifeDays) && shelfLifeDays > 0) {
+            const dates = this.calculateDates(this.currentItem.product, this.dateReceived, this.currentItem.shelfLife);
             const batchId = this.generateBatchId(this.currentItem.product);
             
             this.stockInItems.push({
@@ -287,6 +293,15 @@ function inventoryData() {
             @foreach($inventoryItems as $item)
                 @foreach($item->batches as $batch)
                     @if($batch->status === 'available' && $batch->quantity > 0)
+                        @php
+                            $batchShelfLifeDays = $batch->received_date && $batch->expiry_date
+                                ? (int) $batch->received_date->diffInDays($batch->expiry_date)
+                                : null;
+                            $batchRemainingShelfLife = $batch->remaining_shelf_life;
+                            $batchFreshness = $batchShelfLifeDays
+                                ? min(100, max(0, round($batchRemainingShelfLife / $batchShelfLifeDays * 100)))
+                                : 0;
+                        @endphp
                         stock.push({
                             product: @js($item->name),
                             batchId: {{ $batch->id }},
@@ -294,7 +309,10 @@ function inventoryData() {
                             quantity: {{ $batch->quantity }},
                             unit: @js($item->unit),
                             category: @js($item->category),
-                            freshness: {{ $batch->remaining_shelf_life ?? 0 }}
+                            expiryDate: @js($batch->expiry_date?->format('M d, Y') ?? 'N/A'),
+                            shelfLifeDays: @js($batchShelfLifeDays),
+                            remainingShelfLife: {{ $batchRemainingShelfLife ?? 0 }},
+                            freshness: {{ $batchFreshness }}
                         });
                     @endif
                 @endforeach
@@ -372,7 +390,10 @@ function inventoryData() {
             batchCode: this.selectedBatch.batchCode,
             quantity: this.selectedBatch.quantity,
             availableQty: this.selectedBatch.quantity,
-            unit: this.selectedBatch.unit
+            unit: this.selectedBatch.unit,
+            shelfLifeDays: this.selectedBatch.shelfLifeDays,
+            remainingShelfLife: this.selectedBatch.remainingShelfLife,
+            expiryDate: this.selectedBatch.expiryDate
         };
 
         if (existingIndex >= 0) {
@@ -402,7 +423,10 @@ function inventoryData() {
                     batchCode: this.selectedBatch.batchCode,
                     quantity: quantity,
                     availableQty: this.selectedBatch.quantity,
-                    unit: this.selectedBatch.unit
+                    unit: this.selectedBatch.unit,
+                    shelfLifeDays: this.selectedBatch.shelfLifeDays,
+                    remainingShelfLife: this.selectedBatch.remainingShelfLife,
+                    expiryDate: this.selectedBatch.expiryDate
                 });
             }
             
@@ -1041,7 +1065,9 @@ $fruitIconPath = 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 
                         Exp: {{ $batch[3] }}
                     </span>
                     <span class="flex items-center gap-1 ml-2">
-                        <span class="{{ $batch[10] <= 7 ? 'text-red-500' : ($batch[10] <= 14 ? 'text-amber-500' : 'text-green-600') }} font-semibold">{{ $batch[10] }}d</span>
+                        <span class="font-semibold {{ $batch[10] <= 7 ? 'text-red-500' : ($batch[10] <= 14 ? 'text-amber-500' : 'text-green-600') }}">
+                            {{ $batch[12] === null ? 'Shelf life N/A' : 'Shelf life ' . $batch[12] . 'd' }} · {{ $batch[10] }}d left
+                        </span>
                     </span>
                 </div>
                 
@@ -1200,6 +1226,7 @@ $fruitIconPath = 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 
                         <th class="whitespace-nowrap px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-500">Category</th>
                         <th class="whitespace-nowrap px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-500">Unit Price</th>
                         <th class="whitespace-nowrap px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-500">Total Stock</th>
+                        <th class="whitespace-nowrap px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-500">Shelf Life</th>
                         <th class="whitespace-nowrap px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-500">Status</th>
                         <th class="whitespace-nowrap px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-500">Actions</th>
                     </tr>
@@ -1207,6 +1234,15 @@ $fruitIconPath = 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 
                 <tbody x-ref="productRows">
                     @if(isset($inventoryItems) && $inventoryItems->count() > 0)
                         @foreach($inventoryItems as $item)
+                        @php
+                            $nearestBatch = $item->batches
+                                ->filter(fn ($batch) => $batch->status === 'available' && $batch->quantity > 0 && $batch->expiry_date)
+                                ->sortBy('expiry_date')
+                                ->first();
+                            $batchShelfLifeDays = $nearestBatch && $nearestBatch->received_date
+                                ? (int) $nearestBatch->received_date->diffInDays($nearestBatch->expiry_date)
+                                : null;
+                        @endphp
                         <tr data-product-row
                             data-product-name="{{ $item->name }}"
                             data-product-category="{{ $item->category ?? '' }}"
@@ -1227,6 +1263,14 @@ $fruitIconPath = 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 
                             <td class="py-4 px-4 text-sm text-gray-600">{{ $item->category ?? 'N/A' }}</td>
                             <td class="py-4 px-4 text-sm font-semibold text-gray-900">₱{{ number_format($item->price_per_unit, 2) }}/{{ $item->unit }}</td>
                             <td class="py-4 px-4 text-sm font-semibold text-gray-900">{{ number_format($item->stock_quantity, 0) }} {{ $item->unit }}</td>
+                            <td class="py-4 px-4 text-xs text-gray-600">
+                                @if($nearestBatch)
+                                    <span class="font-semibold text-gray-800">{{ $batchShelfLifeDays === null ? 'N/A' : $batchShelfLifeDays . ' days' }}</span>
+                                    <span class="block text-gray-400">{{ $nearestBatch->remaining_shelf_life }} days left · Exp {{ $nearestBatch->expiry_date->format('M d, Y') }}</span>
+                                @else
+                                    <span class="text-gray-400">No active batch</span>
+                                @endif
+                            </td>
                             <td class="py-4 px-4">
                                 @php
                                     $status = 'Available';
@@ -1264,7 +1308,7 @@ $fruitIconPath = 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 
                         </tr>
                         @endforeach
                         <tr x-show="!hasMatchingProductRows($refs.productRows)" x-cloak>
-                            <td colspan="6" class="px-4 py-14 text-center">
+                            <td colspan="7" class="px-4 py-14 text-center">
                                 <div class="mx-auto flex max-w-sm flex-col items-center">
                                     <div class="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-violet-50 text-violet-500">
                                         <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
@@ -1279,7 +1323,7 @@ $fruitIconPath = 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 
                         </tr>
                     @else
                         <tr>
-                            <td colspan="6" class="py-12 text-center">
+                            <td colspan="7" class="py-12 text-center">
                                 <div class="flex flex-col items-center justify-center">
                                     <svg class="w-16 h-16 text-gray-300 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
@@ -1322,51 +1366,66 @@ $fruitIconPath = 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 
     <div class="card overflow-hidden p-0 fade-up delay-1">
         <div class="flex flex-col gap-1 border-b border-gray-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
             <div>
-                <h2 class="text-sm font-bold text-gray-900">Incoming batches</h2>
-                <p class="mt-0.5 text-[11px] text-gray-500">Most recently recorded stock receipts</p>
+                <h2 class="text-sm font-bold text-gray-900">Supplier deliveries</h2>
+                <p class="mt-0.5 text-[11px] text-gray-500">Expand a supplier to see delivered fruits, quantities, batches, and costs.</p>
             </div>
-            <span class="w-fit rounded-full bg-gray-100 px-3 py-1 text-[11px] font-bold text-gray-600">{{ isset($stockInRecords) ? count($stockInRecords) : 0 }} {{ isset($stockInRecords) && count($stockInRecords) === 1 ? 'record' : 'records' }}</span>
+            <span class="w-fit rounded-full bg-gray-100 px-3 py-1 text-[11px] font-bold text-gray-600">{{ isset($stockInGroups) ? count($stockInGroups) : 0 }} {{ isset($stockInGroups) && count($stockInGroups) === 1 ? 'supplier' : 'suppliers' }}</span>
         </div>
         <div class="space-y-3 p-4 sm:p-5">
-            @if(isset($stockInRecords) && count($stockInRecords) > 0)
-            @foreach($stockInRecords as $stockIn)
-            <div class="flex flex-col gap-4 rounded-2xl border border-gray-100 bg-gray-50/70 p-4 transition-colors hover:bg-gray-100/70 sm:flex-row sm:items-center sm:gap-5 sm:px-5">
-                <div class="flex min-w-0 flex-1 items-start gap-3 sm:items-center sm:gap-4">
-                    <div class="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-gray-100 text-gray-600">
-                        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 16V4m0 0L7 9m5-5 5 5"/>
+            @if(isset($stockInGroups) && count($stockInGroups) > 0)
+            @foreach($stockInGroups as $stockInGroup)
+            <details class="group rounded-2xl border border-gray-100 bg-gray-50/70 transition-colors open:bg-white">
+                <summary class="flex cursor-pointer list-none flex-col gap-4 p-4 transition-colors hover:bg-gray-100/70 sm:flex-row sm:items-center sm:gap-5 sm:px-5 [&::-webkit-details-marker]:hidden">
+                    <div class="flex min-w-0 flex-1 items-start gap-3 sm:items-center sm:gap-4">
+                        <div class="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-gray-100 text-gray-600">
+                            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2m12-13a4 4 0 11-8 0 4 4 0 018 0z"/>
+                            </svg>
+                        </div>
+                        <div class="min-w-0 flex-1">
+                            <div class="flex flex-wrap items-center gap-2">
+                                <p class="text-sm font-bold text-gray-900">{{ $stockInGroup['supplier'] }}</p>
+                                <span class="rounded-full bg-violet-100 px-2.5 py-1 text-[10px] font-bold text-violet-700">{{ $stockInGroup['batch_count'] }} {{ $stockInGroup['batch_count'] === 1 ? 'delivery' : 'deliveries' }}</span>
+                            </div>
+                            <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-gray-500">
+                                <span>Latest delivery: {{ $stockInGroup['latest_received'] }}</span>
+                                <span>{{ number_format($stockInGroup['total_quantity'], 2) }} kg received</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between gap-4 border-t border-gray-100 pt-3 sm:justify-end sm:border-0 sm:pt-0">
+                        <span class="text-[11px] font-semibold text-violet-700">View delivered items</span>
+                        <svg class="h-4 w-4 flex-shrink-0 text-gray-500 transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
                         </svg>
                     </div>
-                    <div class="min-w-0 flex-1">
-                        <div class="flex flex-wrap items-center gap-2">
-                            <p class="text-sm font-bold text-gray-900">{{ $stockIn[1] }}</p>
-                            <span class="rounded-md bg-gray-100 px-2 py-1 font-mono text-[10px] font-semibold text-gray-600">{{ $stockIn[0] }}</span>
+                </summary>
+                <div class="space-y-3 border-t border-gray-100 px-4 py-4 sm:px-5">
+                    @foreach($stockInGroup['items'] as $deliveredItem)
+                    <div class="rounded-xl border border-gray-100 bg-white p-3 sm:p-4">
+                        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div class="min-w-0">
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <p class="text-sm font-bold text-gray-900">{{ $deliveredItem['product'] }}</p>
+                                    <span class="rounded-md bg-gray-100 px-2 py-1 font-mono text-[10px] font-semibold text-gray-600">{{ $deliveredItem['batch_code'] }}</span>
+                                </div>
+                                <div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-gray-500">
+                                    <span>Received: {{ $deliveredItem['received_date'] }}</span>
+                                    <span>Expires: {{ $deliveredItem['expiry_date'] }}</span>
+                                    <span>Shelf life: {{ $deliveredItem['shelf_life_days'] === null ? 'Not recorded' : $deliveredItem['shelf_life_days'] . ' days' }}</span>
+                                    <span>{{ $deliveredItem['remaining_shelf_life'] }} days remaining</span>
+                                    <span>₱{{ number_format($deliveredItem['unit_cost'], 2) }}/kg</span>
+                                </div>
+                            </div>
+                            <div class="sm:min-w-28 sm:text-right">
+                                <p class="text-base font-black leading-tight text-gray-900">{{ number_format($deliveredItem['quantity'], 2) }} kg</p>
+                                <p class="mt-1 text-xs font-semibold text-gray-600">₱{{ number_format($deliveredItem['total_cost'], 2) }}</p>
+                            </div>
                         </div>
-                        <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5">
-                            <p class="flex items-center gap-1.5 text-[11px] text-gray-500">
-                                <svg class="h-3.5 w-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2m12-13a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
-                                <span>{{ $stockIn[3] }}</span>
-                            </p>
-                            <p class="flex items-center gap-1.5 text-[11px] text-gray-500">
-                                <svg class="h-3.5 w-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 5h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2z"/></svg>
-                                <span>{{ $stockIn[4] }}</span>
-                            </p>
-                        </div>
                     </div>
+                    @endforeach
                 </div>
-                <div class="flex items-center justify-between gap-4 border-t border-gray-100 pt-3 sm:justify-end sm:border-0 sm:pt-0">
-                    <div class="text-left sm:min-w-24 sm:text-right">
-                        <p class="text-base font-black leading-tight text-gray-900">{{ $stockIn[2] }}</p>
-                        <p class="mt-1 text-xs font-semibold text-gray-600">{{ $stockIn[5] }}</p>
-                    </div>
-                    <div class="sm:min-w-20 sm:text-right">
-                        <span class="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-1 text-[10px] font-bold text-gray-600">
-                            <span class="h-1.5 w-1.5 rounded-full bg-gray-400"></span>
-                            {{ $stockIn[6] }}
-                        </span>
-                    </div>
-                </div>
-            </div>
+            </details>
             @endforeach
             @else
             {{-- Empty State --}}
@@ -1446,6 +1505,9 @@ $fruitIconPath = 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 
                                 <span>{{ $stockOut[4] }}</span>
                             </p>
                         </div>
+                        @if(!empty($stockOut[9]))
+                        <p class="mt-2 text-[10px] text-gray-500">{{ $stockOut[9] }}</p>
+                        @endif
                     </div>
                 </div>
                 <div class="flex items-center justify-between gap-4 border-t border-gray-100 pt-3 sm:justify-end sm:border-0 sm:pt-0">
@@ -1519,6 +1581,9 @@ $fruitIconPath = 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 
                         <div class="flex items-center gap-4 mt-1">
                             <p class="text-xs text-gray-400">By: {{ $adjustment[5] }} · {{ $adjustment[4] }}</p>
                         </div>
+                        @if(!empty($adjustment[9]))
+                        <p class="mt-1 text-[11px] text-gray-500">{{ $adjustment[9] }}</p>
+                        @endif
                     </div>
                 </div>
             </div>
@@ -1858,7 +1923,7 @@ $fruitIconPath = 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 
                                     <div class="space-y-4">
                                         <div>
                                             <label class="inp-label">Product *</label>
-                                            <select x-model="currentItem.product" class="inp bg-white" required>
+                                            <select x-model="currentItem.product" @change="currentItem.shelfLife = getShelfLifeForProduct(currentItem.product)" class="inp bg-white" required>
                                                 <option value="">Select Product</option>
                                                 @if(isset($inventoryItems) && $inventoryItems->count() > 0)
                                                     @foreach($inventoryItems as $item)
@@ -1868,6 +1933,12 @@ $fruitIconPath = 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 
                                                     <option disabled>No products available - Add products first</option>
                                                 @endif
                                             </select>
+                                        </div>
+
+                                        <div>
+                                            <label class="inp-label">Shelf Life (days) *</label>
+                                            <input type="number" x-model.number="currentItem.shelfLife" min="1" step="1" placeholder="Enter shelf life in days" class="inp bg-white" required>
+                                            <p class="mt-1 text-[11px] text-gray-500">Suggested value is based on the fruit type. Adjust for ripeness and storage conditions.</p>
                                         </div>
                                         
                                         <div class="grid grid-cols-2 gap-3">
@@ -1897,11 +1968,11 @@ $fruitIconPath = 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 
                                                     </div>
                                                     <div class="flex justify-between items-center">
                                                         <span class="text-xs text-gray-600">Shelf Life</span>
-                                                        <span class="text-xs font-bold text-gray-900" x-text="calculateDates(currentItem.product, dateReceived).shelfLife + ' days'"></span>
+                                                        <span class="text-xs font-bold text-gray-900" x-text="calculateDates(currentItem.product, dateReceived, currentItem.shelfLife).shelfLife + ' days'"></span>
                                                     </div>
                                                     <div class="flex justify-between items-center">
                                                         <span class="text-xs text-gray-600">Expiration</span>
-                                                        <span class="text-xs font-bold text-gray-900" x-text="calculateDates(currentItem.product, dateReceived).expirationDate"></span>
+                                                        <span class="text-xs font-bold text-gray-900" x-text="calculateDates(currentItem.product, dateReceived, currentItem.shelfLife).expirationDate"></span>
                                                     </div>
                                                     <div class="h-px bg-gray-200 my-2"></div>
                                                     <div class="flex justify-between items-center">
@@ -1913,8 +1984,8 @@ $fruitIconPath = 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 
                                         </template>
                                         
                                         <button @click.stop="addStockItem()" 
-                                                :disabled="!currentItem.product || currentItem.quantity <= 0 || currentItem.unitCost <= 0"
-                                                :class="(!currentItem.product || currentItem.quantity <= 0 || currentItem.unitCost <= 0) ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-lg'"
+                                                :disabled="!currentItem.product || currentItem.quantity <= 0 || currentItem.unitCost <= 0 || !Number.isInteger(Number(currentItem.shelfLife)) || currentItem.shelfLife < 1"
+                                                :class="(!currentItem.product || currentItem.quantity <= 0 || currentItem.unitCost <= 0 || !Number.isInteger(Number(currentItem.shelfLife)) || currentItem.shelfLife < 1) ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-lg'"
                                                 class="w-full btn btn-violet btn-md text-sm transition-all">
                                             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
                                                 <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
@@ -2503,8 +2574,9 @@ $fruitIconPath = 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 
                                             <div class="flex items-center gap-2 text-[10px] text-gray-500">
                                                 <span>Available: <strong x-text="batch.quantity + ' ' + batch.unit"></strong></span>
                                                 <span class="px-1.5 py-0.5 rounded" 
-                                                      :class="batch.freshness > 14 ? 'bg-green-100 text-green-700' : (batch.freshness > 7 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700')"
-                                                      x-text="batch.freshness + 'd'"></span>
+                                                      :class="batch.remainingShelfLife > 7 ? 'bg-green-100 text-green-700' : (batch.remainingShelfLife > 3 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700')"
+                                                      x-text="(batch.shelfLifeDays === null ? 'Shelf life N/A' : 'Shelf life ' + batch.shelfLifeDays + 'd') + ' · ' + batch.remainingShelfLife + 'd left'"></span>
+                                                <span>Expires: <strong x-text="batch.expiryDate"></strong></span>
                                             </div>
                                         </div>
                                         <button type="button"
@@ -2537,6 +2609,8 @@ $fruitIconPath = 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 
                             Choose whether to remove the entire batch or only part of it. Available:
                             <strong x-text="selectedBatch?.quantity + ' ' + selectedBatch?.unit"></strong>
                         </p>
+                        <p class="text-[11px] text-violet-700 mb-3"
+                           x-text="'Shelf life: ' + (selectedBatch?.shelfLifeDays === null ? 'not recorded' : selectedBatch?.shelfLifeDays + ' days') + ' · ' + selectedBatch?.remainingShelfLife + ' days remaining · Expires: ' + selectedBatch?.expiryDate"></p>
                         <div class="flex flex-wrap gap-2">
                             <button type="button" @click="addWholeSelectedBatch()"
                                     class="btn bg-violet-600 hover:bg-violet-700 text-white btn-sm text-xs px-3 py-2">
@@ -2619,6 +2693,8 @@ $fruitIconPath = 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 
                                                         <span class="font-sans uppercase tracking-wide text-[8px] text-violet-500">Batch</span>
                                                         <span x-text="item.batchCode || item.batchId"></span>
                                                     </span>
+                                                    <p class="mt-1 text-[10px] text-gray-500"
+                                                       x-text="'Shelf life: ' + (item.shelfLifeDays === null ? 'not recorded' : item.shelfLifeDays + ' days') + ' · ' + item.remainingShelfLife + ' days left · Expires: ' + item.expiryDate"></p>
                                                 </div>
                                             </div>
                                             <div class="flex items-center gap-2 flex-shrink-0">
@@ -2918,6 +2994,8 @@ $fruitIconPath = 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 
                                             </div>
                                             <div class="flex items-center gap-2 text-[10px] text-gray-500">
                                                 <span>Current: <strong x-text="batch.quantity + ' kg'"></strong></span>
+                                                <span x-text="batch.shelfLifeDays === null ? 'Shelf life not recorded' : 'Shelf life: ' + batch.shelfLifeDays + 'd · ' + batch.remainingShelfLife + 'd left'"></span>
+                                                <span x-text="'Expires: ' + batch.expiryDate"></span>
                                                 <span class="px-1.5 py-0.5 rounded" 
                                                       :class="batch.freshness > 70 ? 'bg-green-100 text-green-700' : (batch.freshness > 40 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700')"
                                                       x-text="batch.freshness + '%'"></span>

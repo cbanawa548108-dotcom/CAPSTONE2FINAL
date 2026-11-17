@@ -303,6 +303,7 @@ class ReportsController extends Controller
             $average = ($opening + $closing) / 2;
 
             return [
+                '_item_id' => $item->id,
                 'product_name' => $item->name,
                 'category' => $item->category,
                 'unit' => $item->unit,
@@ -319,9 +320,19 @@ class ReportsController extends Controller
             ];
         });
 
-        // Only products with any stock or movement in the period
-        $rows = $report->filter(fn ($r) => $r['opening_stock'] > 0 || $r['received'] > 0 || $r['sold'] > 0 || $r['closing_stock'] > 0)
-            ->sortByDesc('sold')->values();
+        // Keep products received later visible with zero balances in earlier periods.
+        $rows = $report->filter(fn ($r) => $r['opening_stock'] > 0
+                || $r['received'] > 0
+                || $r['sold'] > 0
+                || $r['closing_stock'] > 0
+                || (float) ($receivedAfter[$r['_item_id']] ?? 0) > 0)
+            ->sortByDesc('sold')
+            ->map(function ($row) {
+                unset($row['_item_id']);
+
+                return $row;
+            })
+            ->values();
         $turnovers = $rows->pluck('turnover')->filter(fn ($v) => $v !== null);
 
         return response()->json([

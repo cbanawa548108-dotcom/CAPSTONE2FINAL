@@ -67,6 +67,9 @@ class InventoryController extends Controller
                     $batch->received_date ? $batch->received_date->format('M d, Y') : 'N/A', // 9: received_date
                     $remainingShelfLife, // 10: remaining_shelf_life
                     $stockAge, // 11: stock_age
+                    $batch->received_date && $batch->expiry_date
+                        ? (int) $batch->received_date->diffInDays($batch->expiry_date)
+                        : null, // 12: shelf_life_days
                 ];
             }
         }
@@ -95,13 +98,14 @@ class InventoryController extends Controller
             ];
         }
 
-        // Get Stock In Records (recent batches received)
-        $stockInRecords = InventoryBatch::with('inventoryItem')
+        // Get recent stock-in batches and group them by supplier for the receiving activity view.
+        $stockInBatches = InventoryBatch::with('inventoryItem')
             ->orderBy('received_date', 'desc')
             ->orderBy('created_at', 'desc')
             ->take(20)
-            ->get()
-            ->map(function($batch) {
+            ->get();
+
+        $stockInRecords = $stockInBatches->map(function($batch) {
                 return [
                     $batch->batch_code, // 0: batch_code
                     $batch->inventoryItem->name ?? 'Unknown', // 1: product_name
@@ -112,8 +116,35 @@ class InventoryController extends Controller
                     'Received', // 6: status
                     $batch->received_date ? $batch->received_date->format('Y-m-d') : '', // 7: date filter
                     $batch->created_at?->timestamp ?? ($batch->received_date?->timestamp ?? 0), // 8: sort timestamp
+                    $this->batchShelfLifeDetails($batch), // 9: shelf life details
                 ];
             });
+
+        $stockInGroups = $stockInBatches
+            ->groupBy(fn ($batch) => trim($batch->supplier ?? '') ?: 'N/A')
+            ->map(function ($batches, $supplier) {
+                return [
+                    'supplier' => $supplier,
+                    'batch_count' => $batches->count(),
+                    'total_quantity' => $batches->sum(fn ($batch) => (float) ($batch->initial_quantity ?? $batch->quantity)),
+                    'latest_received' => $batches->first()->received_date?->format('M d, Y') ?? 'N/A',
+                    'items' => $batches->map(function ($batch) {
+                        $receivedQuantity = (float) ($batch->initial_quantity ?? $batch->quantity);
+
+                        return [
+                            'product' => $batch->inventoryItem->name ?? 'Unknown',
+                            'batch_code' => $batch->batch_code,
+                            'quantity' => $receivedQuantity,
+                            'received_date' => $batch->received_date?->format('M d, Y') ?? 'N/A',
+                            'expiry_date' => $batch->expiry_date?->format('M d, Y') ?? 'N/A',
+                            'shelf_life_days' => $this->batchShelfLifeDays($batch),
+                            'remaining_shelf_life' => $batch->remaining_shelf_life,
+                            'unit_cost' => (float) $batch->price_per_unit,
+                            'total_cost' => $receivedQuantity * (float) $batch->price_per_unit,
+                        ];
+                    })->values(),
+                ];
+            })->values();
 
         // Get Stock Out Records (from sales transactions)
         $stockOutRecords = \App\Models\SalesTransaction::with('salesItems.inventoryBatch.inventoryItem')
@@ -150,6 +181,12 @@ class InventoryController extends Controller
                     ucfirst($transaction->status), // 6: status
                     $transaction->created_at->format('Y-m-d'), // 7: date filter
                     $transaction->created_at->timestamp, // 8: sort timestamp
+                    $transaction->salesItems
+                        ->map(fn ($saleItem) => $saleItem->inventoryBatch)
+                        ->filter()
+                        ->map(fn ($batch) => $this->batchShelfLifeDetails($batch))
+                        ->unique()
+                        ->implode('; '), // 9: shelf life details
                 ];
             });
 
@@ -191,6 +228,12 @@ class InventoryController extends Controller
                     $badgeClass, // 6: badge_class
                     $transaction->created_at->format('Y-m-d'), // 7: date filter
                     $transaction->created_at->timestamp, // 8: sort timestamp
+                    $transaction->salesItems
+                        ->map(fn ($saleItem) => $saleItem->inventoryBatch)
+                        ->filter()
+                        ->map(fn ($batch) => $this->batchShelfLifeDetails($batch))
+                        ->unique()
+                        ->implode('; '), // 9: shelf life details
                 ];
             });
 
@@ -201,7 +244,7 @@ class InventoryController extends Controller
                 'item' => $record[1],
                 'reference' => $record[0],
                 'quantity' => '+' . $record[2],
-                'details' => $record[3],
+                'details' => $record[3] . ($record[9] ? ' · ' . $record[9] : ''),
                 'date' => $record[4],
                 'date_filter' => $record[7],
                 'timestamp' => $record[8],
@@ -213,7 +256,7 @@ class InventoryController extends Controller
                 'item' => $record[1],
                 'reference' => $record[0],
                 'quantity' => '-' . $record[2],
-                'details' => $record[3],
+                'details' => $record[3] . ($record[9] ? ' · ' . $record[9] : ''),
                 'date' => $record[4],
                 'date_filter' => $record[7],
                 'timestamp' => $record[8],
@@ -225,7 +268,7 @@ class InventoryController extends Controller
                 'item' => $record[1],
                 'reference' => $record[0],
                 'quantity' => $record[2],
-                'details' => $record[3],
+                'details' => $record[3] . ($record[9] ? ' · ' . $record[9] : ''),
                 'date' => $record[4],
                 'date_filter' => $record[7],
                 'timestamp' => $record[8],
@@ -238,10 +281,33 @@ class InventoryController extends Controller
             'products' => $products,
             'inventoryItems' => $inventoryItems,
             'stockInRecords' => $stockInRecords,
+            'stockInGroups' => $stockInGroups,
             'stockOutRecords' => $stockOutRecords,
             'adjustmentRecords' => $adjustmentRecords,
             'historyRecords' => $historyRecords,
         ]);
+    }
+
+    private function batchShelfLifeDays(InventoryBatch $batch): ?int
+    {
+        if (!$batch->received_date || !$batch->expiry_date) {
+            return null;
+        }
+
+        return (int) $batch->received_date->diffInDays($batch->expiry_date);
+    }
+
+    private function batchShelfLifeDetails(InventoryBatch $batch): string
+    {
+        $product = $batch->inventoryItem?->name ?? 'Batch';
+        $shelfLife = $this->batchShelfLifeDays($batch);
+        $details = $product . ': shelf life ' . ($shelfLife === null ? 'not recorded' : $shelfLife . ' days');
+
+        if ($batch->expiry_date) {
+            $details .= ', expires ' . $batch->expiry_date->format('M d, Y');
+        }
+
+        return $details;
     }
 
     /**
@@ -280,6 +346,8 @@ class InventoryController extends Controller
                 'Supplier',
                 'Received Date',
                 'Expiry Date',
+                'Shelf Life (Days)',
+                'Remaining Shelf Life (Days)',
             ]);
 
             foreach ($inventoryItems as $item) {
@@ -298,6 +366,8 @@ class InventoryController extends Controller
                         $item->reorder_level,
                         $stockStatus,
                         $safeText($item->status),
+                        '',
+                        '',
                         '',
                         '',
                         '',
@@ -325,6 +395,8 @@ class InventoryController extends Controller
                         $safeText($batch->supplier),
                         $batch->received_date?->toDateString() ?? '',
                         $batch->expiry_date?->toDateString() ?? '',
+                        $this->batchShelfLifeDays($batch) ?? '',
+                        $batch->remaining_shelf_life ?? '',
                     ]);
                 }
             }
@@ -390,6 +462,7 @@ class InventoryController extends Controller
                     $batch->received_date ? $batch->received_date->format('M d, Y') : 'N/A', // 9: received_date
                     $remainingShelfLife, // 10: remaining_shelf_life
                     $stockAge, // 11: stock_age
+                    $this->batchShelfLifeDays($batch), // 12: shelf_life_days
                 ];
             }
         }
@@ -799,6 +872,7 @@ class InventoryController extends Controller
                     'batch_code' => $batch->batch_code,
                     'quantity' => $batch->quantity,
                     'expiry_date' => $batch->expiry_date->format('Y-m-d'),
+                    'shelf_life_days' => $this->batchShelfLifeDays($batch),
                     'days_remaining' => $batch->remaining_shelf_life,
                 ];
             });

@@ -99,16 +99,19 @@
             </div>
         </template>
     </div>
-    <div class="grid grid-cols-3 sm:grid-cols-7 gap-2">
-        <template x-for="d in daily" :key="d.date">
+    <div class="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-7 gap-2">
+        <template x-for="d in (weather.forecast || [])" :key="d.date">
             <div class="bg-gray-50 border border-gray-100 rounded-xl p-3 text-center">
                 <p class="text-[11px] font-bold text-gray-500" x-text="d.label.split(' ')[0]"></p>
                 <p class="text-[16px] font-black text-gray-900 mt-1"><span x-text="d.temperature != null ? Math.round(d.temperature) : '—'"></span>°</p>
                 <p class="text-[11px] font-bold" :class="weatherTone(d)" x-text="weatherLabel(d)"></p>
                 <p class="text-[10.5px] text-gray-500" x-text="(d.humidity != null ? Math.round(d.humidity) : '—') + '% RH'"></p>
-                <p class="text-[10.5px] text-blue-600 font-semibold" x-text="(d.rainfall != null ? d.rainfall.toFixed(1) : '—') + ' mm'"></p>
+                <p class="text-[10.5px] text-blue-600 font-semibold" x-text="(d.rainfall != null ? Number(d.rainfall).toFixed(1) : '—') + ' mm'"></p>
             </div>
         </template>
+        <p x-show="!(weather.forecast || []).length" class="col-span-full py-4 text-center text-[12px] text-gray-400">
+            Weather forecast data is not available yet. Refresh the forecast after syncing weather data.
+        </p>
     </div>
 </div>
 
